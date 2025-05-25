@@ -26,6 +26,7 @@ COPY package*.json ./
 
 # 安装Node.js依赖
 RUN npm install
+RUN npm install dotenv
 
 # 安装 Playwright 推荐的所有依赖
 RUN npx playwright install-deps
