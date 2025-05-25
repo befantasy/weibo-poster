@@ -46,6 +46,110 @@
             font-size: 0.9rem;
         }
 
+        /* Token 配置区域 */
+        .token-section {
+            display: none;
+            margin-bottom: 2rem;
+        }
+
+        .token-section.active {
+            display: block;
+        }
+
+        .token-input-group {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .token-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .token-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .token-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .token-toggle:hover {
+            color: #333;
+        }
+
+        .token-status {
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .token-status.valid {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .token-status.invalid {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .token-status.pending {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .token-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-token {
+            flex: 1;
+            padding: 0.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-save {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-save:hover:not(:disabled) {
+            background: #218838;
+        }
+
+        .btn-clear {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-clear:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
         .login-section {
             text-align: center;
             display: none;
@@ -100,7 +204,12 @@
             font-weight: 500;
         }
 
-        .logout-btn {
+        .user-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .logout-btn, .config-btn {
             background: #dc3545;
             color: white;
             border: none;
@@ -111,8 +220,16 @@
             transition: background-color 0.2s;
         }
 
+        .config-btn {
+            background: #6c757d;
+        }
+
         .logout-btn:hover {
             background: #c82333;
+        }
+
+        .config-btn:hover {
+            background: #5a6268;
         }
 
         .textarea {
@@ -247,6 +364,15 @@
                 width: 160px;
                 height: 160px;
             }
+
+            .user-actions {
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .token-actions {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
@@ -258,6 +384,25 @@
         </div>
 
         <div id="alertContainer"></div>
+
+        <!-- Token 配置区域 -->
+        <div id="tokenSection" class="token-section">
+            <h3 style="margin-bottom: 1rem; color: #333;">🔐 API Token 配置</h3>
+            <div class="token-input-group">
+                <input 
+                    type="password" 
+                    id="tokenInput" 
+                    class="token-input" 
+                    placeholder="请输入 API Token"
+                >
+                <button id="tokenToggle" class="token-toggle">👁️</button>
+            </div>
+            <div id="tokenStatus" class="token-status" style="display: none;"></div>
+            <div class="token-actions">
+                <button id="saveTokenBtn" class="btn-token btn-save">保存 Token</button>
+                <button id="clearTokenBtn" class="btn-token btn-clear">清除 Token</button>
+            </div>
+        </div>
 
         <!-- 登录区域 -->
         <div id="loginSection" class="login-section">
@@ -274,7 +419,10 @@
         <div id="postSection" class="post-section">
             <div class="user-info">
                 <span class="user-status">✅ 已登录微博</span>
-                <button id="logoutBtn" class="logout-btn">退出登录</button>
+                <div class="user-actions">
+                    <button id="configBtn" class="config-btn">设置</button>
+                    <button id="logoutBtn" class="logout-btn">退出登录</button>
+                </div>
             </div>
             
             <textarea id="contentInput" class="textarea" placeholder="请输入要发送的微博内容..."></textarea>
@@ -294,24 +442,163 @@
             constructor() {
                 this.isLoggedIn = false;
                 this.scanCheckInterval = null;
+                this.apiToken = '';
                 this.init();
             }
 
             async init() {
+                this.loadToken();
                 this.bindEvents();
-                await this.checkLoginStatus();
+                
+                if (this.apiToken) {
+                    await this.checkLoginStatus();
+                } else {
+                    this.showTokenSection();
+                }
             }
 
             bindEvents() {
+                // Token 相关事件
+                document.getElementById('tokenToggle').addEventListener('click', () => this.toggleTokenVisibility());
+                document.getElementById('saveTokenBtn').addEventListener('click', () => this.saveToken());
+                document.getElementById('clearTokenBtn').addEventListener('click', () => this.clearToken());
+                document.getElementById('tokenInput').addEventListener('input', () => this.validateTokenInput());
+                document.getElementById('tokenInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.saveToken();
+                });
+
+                // 微博相关事件
                 document.getElementById('refreshQR').addEventListener('click', () => this.refreshQRCode());
                 document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+                document.getElementById('configBtn').addEventListener('click', () => this.showTokenSection());
                 document.getElementById('postBtn').addEventListener('click', () => this.postWeibo());
                 document.getElementById('contentInput').addEventListener('input', (e) => this.updateCharCount(e.target.value));
             }
 
+            // Token 管理
+            loadToken() {
+                const stored = localStorage.getItem('weibo_proxy_token');
+                if (stored) {
+                    this.apiToken = stored;
+                    document.getElementById('tokenInput').value = stored;
+                    this.updateTokenStatus('valid', '✅ Token 已加载');
+                }
+            }
+
+            saveToken() {
+                const token = document.getElementById('tokenInput').value.trim();
+                if (!token) {
+                    this.showAlert('请输入 Token', 'error');
+                    return;
+                }
+
+                this.apiToken = token;
+                localStorage.setItem('weibo_proxy_token', token);
+                this.updateTokenStatus('valid', '✅ Token 已保存');
+                this.showAlert('Token 保存成功', 'success');
+                
+                // 保存后自动检查登录状态
+                setTimeout(() => {
+                    this.checkLoginStatus();
+                }, 1000);
+            }
+
+            clearToken() {
+                this.apiToken = '';
+                localStorage.removeItem('weibo_proxy_token');
+                document.getElementById('tokenInput').value = '';
+                this.updateTokenStatus('invalid', '❌ Token 已清除');
+                this.showAlert('Token 已清除', 'info');
+                this.showTokenSection();
+            }
+
+            validateTokenInput() {
+                const token = document.getElementById('tokenInput').value.trim();
+                if (token) {
+                    this.updateTokenStatus('pending', '⏳ 请保存 Token');
+                } else {
+                    this.updateTokenStatus('invalid', '❌ Token 不能为空');
+                }
+            }
+
+            toggleTokenVisibility() {
+                const input = document.getElementById('tokenInput');
+                const toggle = document.getElementById('tokenToggle');
+                
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    toggle.textContent = '🙈';
+                } else {
+                    input.type = 'password';
+                    toggle.textContent = '👁️';
+                }
+            }
+
+            updateTokenStatus(type, message) {
+                const status = document.getElementById('tokenStatus');
+                status.className = `token-status ${type}`;
+                status.textContent = message;
+                status.style.display = 'block';
+            }
+
+            // 页面切换
+            showTokenSection() {
+                document.getElementById('tokenSection').classList.add('active');
+                document.getElementById('loginSection').classList.remove('active');
+                document.getElementById('postSection').classList.remove('active');
+                this.stopScanCheck();
+            }
+
+            showLoginSection() {
+                document.getElementById('tokenSection').classList.remove('active');
+                document.getElementById('loginSection').classList.add('active');
+                document.getElementById('postSection').classList.remove('active');
+                this.isLoggedIn = false;
+            }
+
+            showPostSection() {
+                document.getElementById('tokenSection').classList.remove('active');
+                document.getElementById('loginSection').classList.remove('active');
+                document.getElementById('postSection').classList.add('active');
+                this.isLoggedIn = true;
+                this.stopScanCheck();
+                this.clearAlerts();
+            }
+
+            // API 请求方法
+            async apiRequest(url, options = {}) {
+                if (!this.apiToken) {
+                    throw new Error('API Token 未配置');
+                }
+
+                const headers = {
+                    'Authorization': `Bearer ${this.apiToken}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+
+                const response = await fetch(url, {
+                    ...options,
+                    headers
+                });
+
+                if (response.status === 401) {
+                    this.showAlert('Token 无效或已过期，请重新配置', 'error');
+                    this.showTokenSection();
+                    throw new Error('Token 无效');
+                }
+
+                return response;
+            }
+
             async checkLoginStatus() {
+                if (!this.apiToken) {
+                    this.showTokenSection();
+                    return;
+                }
+
                 try {
-                    const response = await fetch('/api/status');
+                    const response = await this.apiRequest('/api/status');
                     const data = await response.json();
                     
                     if (data.isLoggedIn) {
@@ -321,14 +608,16 @@
                         await this.loadQRCode();
                     }
                 } catch (error) {
-                    this.showAlert('检查登录状态失败: ' + error.message, 'error');
+                    if (error.message !== 'Token 无效') {
+                        this.showAlert('检查登录状态失败: ' + error.message, 'error');
+                    }
                 }
             }
 
             async loadQRCode() {
                 try {
                     this.showAlert('正在获取二维码...', 'info');
-                    const response = await fetch('/api/qrcode');
+                    const response = await this.apiRequest('/api/qrcode');
                     const data = await response.json();
                     
                     if (data.qrCodeUrl) {
@@ -340,7 +629,9 @@
                         throw new Error('获取二维码失败');
                     }
                 } catch (error) {
-                    this.showAlert('获取二维码失败: ' + error.message, 'error');
+                    if (error.message !== 'Token 无效') {
+                        this.showAlert('获取二维码失败: ' + error.message, 'error');
+                    }
                 }
             }
 
@@ -353,7 +644,7 @@
                 this.stopScanCheck();
                 this.scanCheckInterval = setInterval(async () => {
                     try {
-                        const response = await fetch('/api/scan-status');
+                        const response = await this.apiRequest('/api/scan-status');
                         const data = await response.json();
                         
                         if (data.status === 'success') {
@@ -370,7 +661,9 @@
                             this.updateLoginStatus(data.message || '等待扫码中...');
                         }
                     } catch (error) {
-                        console.error('检查扫码状态失败:', error);
+                        if (error.message !== 'Token 无效') {
+                            console.error('检查扫码状态失败:', error);
+                        }
                     }
                 }, 2000);
             }
@@ -384,7 +677,7 @@
 
             async logout() {
                 try {
-                    const response = await fetch('/api/logout', { method: 'POST' });
+                    const response = await this.apiRequest('/api/logout', { method: 'POST' });
                     const data = await response.json();
                     
                     if (data.success) {
@@ -395,7 +688,9 @@
                         }, 1000);
                     }
                 } catch (error) {
-                    this.showAlert('退出登录失败: ' + error.message, 'error');
+                    if (error.message !== 'Token 无效') {
+                        this.showAlert('退出登录失败: ' + error.message, 'error');
+                    }
                 }
             }
 
@@ -418,11 +713,8 @@
                 postBtn.innerHTML = '<span class="loading"></span>发送中...';
 
                 try {
-                    const response = await fetch('/api/post', {
+                    const response = await this.apiRequest('/api/post', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
                         body: JSON.stringify({ content })
                     });
 
@@ -436,7 +728,9 @@
                         throw new Error(data.error || '发送失败');
                     }
                 } catch (error) {
-                    this.showAlert('发送失败: ' + error.message, 'error');
+                    if (error.message !== 'Token 无效') {
+                        this.showAlert('发送失败: ' + error.message, 'error');
+                    }
                 } finally {
                     postBtn.disabled = false;
                     postBtn.textContent = originalText;
@@ -455,20 +749,6 @@
                 if (count > 140) {
                     charCountEl.classList.add('error');
                 }
-            }
-
-            showLoginSection() {
-                document.getElementById('loginSection').classList.add('active');
-                document.getElementById('postSection').classList.remove('active');
-                this.isLoggedIn = false;
-            }
-
-            showPostSection() {
-                document.getElementById('loginSection').classList.remove('active');
-                document.getElementById('postSection').classList.add('active');
-                this.isLoggedIn = true;
-                this.stopScanCheck();
-                this.clearAlerts();
             }
 
             updateLoginStatus(message) {
