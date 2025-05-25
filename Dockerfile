@@ -9,35 +9,28 @@ RUN apt-get update && apt-get install -y \
     libappindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
     libdrm2 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcb-dri3-0 \
     libxcomposite1 \
     libxdamage1 \
-    libxfixes3 \
     libxrandr2 \
+    libgbm1 \
     libxss1 \
-    libxtst6 \
-    xvfb \
+    curl \
+    libgconf-2-4 \
     && rm -rf /var/lib/apt/lists/*
 
-# 设置工作目录
 WORKDIR /app
 
-# 复制 package.json 和安装依赖
+# 复制package.json
 COPY package*.json ./
+
+# 安装Node.js依赖
 RUN npm install
 
-# 安装 Playwright 浏览器
+# 安装Playwright浏览器
 RUN npx playwright install chromium
 
-# 复制应用代码
+# 复制源代码
 COPY . .
 
 # 创建数据目录
@@ -47,4 +40,4 @@ RUN mkdir -p /app/data
 EXPOSE 3000
 
 # 启动应用
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
