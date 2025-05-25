@@ -168,38 +168,48 @@ async function postWeibo(content) {
         if (!isLoggedIn) {
             throw new Error('用户未登录');
         }
-        
+
         await initBrowser();
         await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded' });
-        
+
         // 等待发布框加载
         await page.waitForSelector('textarea[placeholder="有什么新鲜事想分享给大家？"]');
-        
+
         // 输入内容
         await page.fill('textarea[placeholder="有什么新鲜事想分享给大家？"]', content);
-        
+
         // 等待按钮可用（从 disabled 变成 enabled）
         await page.waitForSelector('button:has-text("发送"):not([disabled])', { timeout: 10000 });
 
-        // 点击发送按钮
-        await page.click('button:has-text("发送")');
-        
-        // 等待发布完成
-        await page.waitForTimeout(3000);
-        
-        // 检查是否发布成功
-        const successElement = await page.$('.W_tips_success');
-        if (successElement) {
-            console.log('微博发送成功');
-            return { success: true, message: '微博发送成功' };
+        // === 监听发布接口响应 ===
+        const [response] = await Promise.all([
+            page.waitForResponse(response =>
+                response.url().includes('/ajax/statuses/update') &&
+                response.status() === 200
+            ),
+            page.click('button:has-text("发送")'),
+        ]);
+
+        const result = await response.json();
+
+        if (result.ok === 1) {
+            console.log('微博发送成功，微博ID:', result.data?.idstr);
+            return {
+                success: true,
+                message: '微博发送成功',
+                weiboId: result.data?.idstr,
+                content: result.data?.text_raw || '',
+            };
         } else {
-            throw new Error('发布可能失败，请检查');
+            throw new Error(`微博接口返回失败: ${result.msg || '未知错误'}`);
         }
+
     } catch (error) {
         console.error('发送微博失败:', error);
         throw error;
     }
 }
+
 
 // API路由
 
