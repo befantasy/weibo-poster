@@ -1,23 +1,24 @@
 {
-  "name": "weibo-poster",
+  "name": "weibo-proxy-service",
   "version": "1.0.0",
-  "description": "Weibo poster with QR code login",
-  "main": "src/index.js",
+  "description": "新浪微博代理发送服务",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "playwright": "^1.41.0",
+    "playwright": "^1.40.0",
+    "fs-extra": "^11.2.0",
     "cors": "^2.8.5",
     "body-parser": "^1.20.2",
-    "fs-extra": "^11.2.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3"
+    "nodemon": "^3.0.2"
   },
-  "engines": {
-    "node": ">=16.0.0"
-  }
+  "keywords": ["weibo", "proxy", "playwright", "docker"],
+  "author": "",
+  "license": "MIT"
 }
