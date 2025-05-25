@@ -92,7 +92,7 @@ async function checkLoginStatus() {
         
         // 检查是否存在登录用户信息
         try {
-            await page.waitForSelector('.gn_name', { timeout: 5000 });
+            await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
             isLoggedIn = true;
             console.log('用户已登录');
             return true;
