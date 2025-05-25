@@ -91,7 +91,6 @@ async function checkLoginStatus() {
         await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded' });
         
         // 检查是否存在登录用户信息
-        await page.screenshot({ path: 'weibo-login-check.png', fullPage: true });
         try {
             await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
             isLoggedIn = true;
