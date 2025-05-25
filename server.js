@@ -2,12 +2,9 @@ require('dotenv').config(); // 加载 .env 文件
 const AUTH_TOKEN = process.env.AUTH_TOKEN || 'weibo-proxy'; // 鉴权 token
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const fs = require('fs-extra');
 const path = require('path');
 const { chromium } = require('playwright');
-const { v4: uuidv4 } = require('uuid');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -15,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 
 // 改进的 JSON 解析中间件，添加错误处理
-app.use(bodyParser.json({
+app.use(express.json({
     limit: '10mb',
     verify: (req, res, buf, encoding) => {
         try {
