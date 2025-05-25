@@ -137,27 +137,30 @@ async function getQRCode() {
 // 检查扫码状态
 async function checkScanStatus() {
     try {
-        // 检查是否跳转到主页面
+        // 等待最多 5 秒页面稳定（若正在跳转）
+        await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
+
         const currentUrl = page.url();
         if (currentUrl.includes('weibo.com') && !currentUrl.includes('passport')) {
             isLoggedIn = true;
             await saveSession();
             return { status: 'success', message: '登录成功' };
         }
-        
-        // 检查是否有错误提示
-        const errorElement = await page.$('.txt_red');
+
+        // 页面没跳转，检查是否有错误提示
+        const errorElement = await page.$('.txt_red').catch(() => null);
         if (errorElement) {
             const errorText = await errorElement.textContent();
             return { status: 'error', message: errorText };
         }
-        
+
         return { status: 'waiting', message: '等待扫码' };
     } catch (error) {
-        console.error('检查扫码状态失败:', error);
+        console.error('检查扫码状态失败:', error.message);
         return { status: 'error', message: '检查状态失败' };
     }
 }
+
 
 // 发送微博
 async function postWeibo(content) {
