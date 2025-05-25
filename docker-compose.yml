@@ -1,28 +1,18 @@
 version: '3.8'
 
 services:
-  weibo-poster:
+  weibo-proxy:
     build: .
     ports:
       - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - /dev/shm:/dev/shm
     environment:
       - NODE_ENV=production
       - PORT=3000
-    volumes:
-      - ./data:/app/data
     restart: unless-stopped
-    # 如果需要使用 Redis 作为存储，可以添加以下配置
-    # depends_on:
-    #   - redis
-    
-  # 可选：使用 Redis 作为持久化存储
-  # redis:
-  #   image: redis:7-alpine
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis_data:/data
-  #   restart: unless-stopped
-
-# volumes:
-#   redis_data:
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
