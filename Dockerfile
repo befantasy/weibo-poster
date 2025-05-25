@@ -1,23 +1,23 @@
 FROM node:18-slim
 
 # 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libdrm2 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libxss1 \
-    curl \
-    libgconf-2-4 \
-    && rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && apt-get install -y \
+#    wget \
+#    gnupg \
+#    ca-certificates \
+#    fonts-liberation \
+#    libappindicator3-1 \
+#    libasound2 \
+#    libatk-bridge2.0-0 \
+#    libdrm2 \
+#    libxcomposite1 \
+#    libxdamage1 \
+#    libxrandr2 \
+#    libgbm1 \
+#    libxss1 \
+#    curl \
+#    libgconf-2-4 \
+#    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
