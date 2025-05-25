@@ -170,16 +170,19 @@ async function postWeibo(content) {
         }
         
         await initBrowser();
-        await page.goto('https://weibo.com', { waitUntil: 'networkidle' });
+        await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded' });
         
         // 等待发布框加载
-        await page.waitForSelector('textarea[node-type="text"]', { timeout: 10000 });
+        await page.waitForSelector('textarea[placeholder="有什么新鲜事想分享给大家？"]');
         
         // 输入内容
-        await page.fill('textarea[node-type="text"]', content);
+        await page.fill('textarea[placeholder="有什么新鲜事想分享给大家？"]', content);
         
-        // 点击发布按钮
-        await page.click('a[node-type="submit"]');
+        // 等待按钮可用（从 disabled 变成 enabled）
+        await page.waitForSelector('button:has-text("发送"):not([disabled])', { timeout: 10000 });
+
+        // 点击发送按钮
+        await page.click('button:has-text("发送")');
         
         // 等待发布完成
         await page.waitForTimeout(3000);
