@@ -88,7 +88,7 @@ async function loadSession() {
 async function checkLoginStatus() {
     try {
         await initBrowser();
-        await page.goto('https://weibo.com', { waitUntil: 'load' });
+        await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded' });
         
         // 检查是否存在登录用户信息
         await page.screenshot({ path: 'weibo-login-check.png', fullPage: true });
