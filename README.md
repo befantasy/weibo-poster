@@ -1,39 +1,42 @@
-# 微博自动发布系统部署指南
+# 新浪微博代理发送服务
 
-## 项目结构
+一个基于 Docker 的新浪微博代理发送服务，使用 Playwright 模拟真实用户操作，支持扫码登录和微博发送功能。
+
+## 🚀 功能特性
+
+- ✅ 扫码登录新浪微博
+- ✅ 自动保存和恢复登录状态
+- ✅ 美观的 Web 界面
+- ✅ RESTful API 支持
+- ✅ Docker 容器化部署
+- ✅ 实时扫码状态检查
+- ✅ 字符计数和限制检查
+- ✅ 错误处理和用户反馈
+
+## 📁 项目结构
 
 ```
-weibo-poster/
-├── Dockerfile
-├── docker-compose.yml
-├── package.json
-├── src/
-│   └── index.js
-├── data/           # 数据存储目录
-└── README.md
+weibo-proxy/
+├── docker-compose.yml    # Docker Compose 配置
+├── Dockerfile           # Docker 镜像构建文件
+├── package.json         # Node.js 依赖配置
+├── server.js           # 后端服务器主文件
+├── public/
+│   └── index.html      # 前端界面
+├── data/               # 数据存储目录（自动创建）
+│   └── session.json    # 登录会话存储
+└── README.md          # 项目说明文档
 ```
 
-## 快速部署
+## 🛠️ 安装和部署
 
-### 1. 克隆或创建项目目录
-
+### 1. 克隆项目
 ```bash
-mkdir weibo-poster
-cd weibo-poster
+git clone <repository-url>
+cd weibo-proxy
 ```
 
-### 2. 创建必要的文件
-
-将提供的 `Dockerfile`、`package.json`、`docker-compose.yml` 和 `src/index.js` 文件放在对应位置。
-
-### 3. 创建数据目录
-
-```bash
-mkdir data
-```
-
-### 4. 使用 Docker Compose 部署
-
+### 2. 使用 Docker Compose 部署
 ```bash
 # 构建并启动服务
 docker-compose up -d
@@ -45,206 +48,182 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### 5. 访问服务
+### 3. 访问服务
+- Web 界面: http://localhost:3000
+- API 接口: http://localhost:3000/api/*
 
-打开浏览器访问：`http://localhost:3000`
-
-## 使用说明
-
-### 登录流程
-
-1. 访问 `http://localhost:3000`
-2. 点击"获取二维码"按钮
-3. 使用微博 APP 扫描二维码
-4. 系统会自动检测登录状态
-5. 登录成功后显示发布表单
-
-### 发布微博
-
-1. 在登录成功后的文本框中输入微博内容
-2. 点击"发布微博"按钮
-3. 系统会自动发布内容到微博
-
-## API 接口
-
-### 获取登录页面
-```
-GET /
-```
-
-### 获取二维码
-```
-GET /qr
-```
+## 🌐 API 接口
 
 ### 检查登录状态
+```http
+GET /api/status
 ```
-GET /check?session={sessionId}
+**响应:**
+```json
+{
+  "isLoggedIn": true/false
+}
 ```
 
-### 发布微博
+### 获取登录二维码
+```http
+GET /api/qrcode
 ```
-POST /post
+**响应:**
+```json
+{
+  "qrCodeUrl": "https://qr.weibo.cn/..."
+}
+```
+
+### 检查扫码状态
+```http
+GET /api/scan-status
+```
+**响应:**
+```json
+{
+  "status": "waiting|success|error",
+  "message": "状态信息"
+}
+```
+
+### 发送微博
+```http
+POST /api/post
 Content-Type: application/json
 
 {
-  "content": "微博内容",
-  "sessionId": "会话ID"
+  "content": "要发送的微博内容"
+}
+```
+**响应:**
+```json
+{
+  "success": true,
+  "message": "微博发送成功"
 }
 ```
 
-## 环境变量
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| PORT | 3000 | 服务端口 |
-| NODE_ENV | production | 运行环境 |
-
-## 进阶配置
-
-### 使用 Redis 作为存储
-
-如果需要在多个实例间共享会话或需要持久化存储，可以启用 Redis：
-
-1. 取消注释 `docker-compose.yml` 中的 Redis 相关配置
-2. 安装 Redis 客户端：`npm install redis`
-3. 修改 `src/index.js` 中的存储逻辑
-
-### 自定义端口
-
-```bash
-# 修改端口为 8080
-PORT=8080 docker-compose up -d
+### 退出登录
+```http
+POST /api/logout
 ```
-
-或在 `docker-compose.yml` 中修改：
-
-```yaml
-ports:
-  - "8080:3000"
-environment:
-  - PORT=3000
-```
-
-### 生产环境部署
-
-1. **反向代理**: 建议使用 Nginx 作为反向代理
-2. **HTTPS**: 配置 SSL 证书
-3. **监控**: 添加健康检查和日志监控
-4. **备份**: 定期备份会话数据
-
-#### Nginx 配置示例
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+**响应:**
+```json
+{
+  "success": true,
+  "message": "退出登录成功"
 }
 ```
 
-## 故障排除
+## 💻 使用说明
 
-### 1. 容器启动失败
+### Web 界面使用
 
+1. **首次访问**: 浏览器打开 http://localhost:3000
+2. **扫码登录**: 使用微博手机APP扫描二维码登录
+3. **发送微博**: 登录成功后，在文本框输入内容并点击发送
+4. **退出登录**: 点击右上角退出按钮
+
+### API 调用示例
+
+**使用 curl 发送微博:**
 ```bash
-# 查看详细日志
-docker-compose logs weibo-poster
-
-# 检查容器状态
-docker-compose ps
+curl -X POST http://localhost:3000/api/post \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Hello from API!"}'
 ```
 
-### 2. 二维码获取失败
+**使用 Python 发送微博:**
+```python
+import requests
 
-- 检查网络连接
-- 确认微博网站可访问
-- 查看浏览器控制台错误
+url = "http://localhost:3000/api/post"
+data = {"content": "Hello from Python!"}
 
-### 3. 登录检测失败
+response = requests.post(url, json=data)
+print(response.json())
+```
 
-- 微博网站可能更新了页面结构
-- 需要更新选择器
-- 检查 cookies 是否正确保存
+## ⚙️ 配置说明
 
-### 4. 发布失败
+### 环境变量
+- `PORT`: 服务端口，默认 3000
+- `NODE_ENV`: 运行环境，默认 production
 
-- 确认登录状态有效
-- 检查微博内容是否符合规范
-- 查看错误日志
+### Docker 配置
+- **端口映射**: 3000:3000
+- **数据持久化**: ./data:/app/data
+- **共享内存**: /dev/shm (Playwright 需要)
 
-## 安全注意事项
+## 🔧 开发模式
 
-1. **不要在公网直接暴露服务**，建议使用 VPN 或内网访问
-2. **定期更新依赖**，修复安全漏洞
-3. **限制访问频率**，避免被微博反爬
-4. **不要保存敏感信息**，如密码等
-
-## 开发和调试
-
-### 本地开发
+如需在开发模式下运行：
 
 ```bash
 # 安装依赖
 npm install
 
+# 安装 Playwright 浏览器
+npx playwright install chromium
+
 # 启动开发服务器
 npm run dev
 ```
 
-### 调试模式
+## 📋 技术栈
 
-设置环境变量启用调试：
+- **后端**: Node.js + Express
+- **自动化**: Playwright
+- **前端**: HTML + CSS + JavaScript
+- **容器化**: Docker + Docker Compose
+- **存储**: JSON 文件存储
 
+## 🚨 注意事项
+
+1. **登录状态**: 登录会话会自动保存在 `data/session.json` 文件中
+2. **安全性**: 请勿在生产环境中暴露敏感接口
+3. **频率限制**: 微博平台可能有发送频率限制，请合理使用
+4. **浏览器资源**: Playwright 会占用一定的系统资源
+5. **网络稳定**: 需要稳定的网络连接来维持微博会话
+
+## 🐛 故障排除
+
+### 常见问题
+
+**1. 二维码无法加载**
+- 检查网络连接
+- 确认微博服务是否正常
+- 查看容器日志: `docker-compose logs`
+
+**2. 登录状态丢失**
+- 检查 `data/session.json` 文件是否存在
+- 重新扫码登录
+- 确认 Docker 数据卷挂载正确
+
+**3. 发送微博失败**
+- 确认已正确登录
+- 检查微博内容是否符合规范
+- 查看详细错误信息
+
+**4. 容器启动失败**
 ```bash
-DEBUG=true npm start
-```
+# 查看详细日志
+docker-compose logs weibo-proxy
 
-### 自定义浏览器参数
-
-修改 `src/index.js` 中的 `chromium.launch()` 参数：
-
-```javascript
-const browser = await chromium.launch({
-  headless: false,  // 显示浏览器窗口
-  slowMo: 1000,     // 减慢操作速度
-  devtools: true,   // 打开开发者工具
-  args: [
-    '--no-sandbox',
-    '--disable-setuid-sandbox'
-  ]
-});
-```
-
-## 更新和维护
-
-### 更新应用
-
-```bash
-# 停止服务
-docker-compose down
-
-# 重新构建
+# 重新构建镜像
 docker-compose build --no-cache
-
-# 启动服务
-docker-compose up -d
 ```
 
-### 清理数据
+## 📄 许可证
 
-```bash
-# 清理过期会话数据
-docker-compose exec weibo-poster rm -rf /app/data/*
-```
+MIT License
 
-## 许可证
+## 🤝 贡献
 
-本项目仅供学习和研究使用，请遵守微博的服务条款和相关法律法规。
+欢迎提交 Issue 和 Pull Request！
+
+## 📞 支持
+
+如有问题，请创建 GitHub Issue 或联系维护者。
