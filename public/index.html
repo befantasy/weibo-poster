@@ -1,289 +1,507 @@
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const fs = require('fs-extra');
-const path = require('path');
-const { chromium } = require('playwright');
-const { v4: uuidv4 } = require('uuid');
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微博代理发送服务</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-// 中间件
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static('public'));
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 2rem;
+            width: 100%;
+            max-width: 500px;
+            margin: 1rem;
+        }
 
-// 数据存储路径
-const DATA_DIR = path.join(__dirname, 'data');
-const SESSION_FILE = path.join(DATA_DIR, 'session.json');
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
 
-// 确保数据目录存在
-fs.ensureDirSync(DATA_DIR);
+        .header h1 {
+            color: #333;
+            margin-bottom: 0.5rem;
+            font-size: 1.8rem;
+        }
 
-// 全局变量
-let browser = null;
-let context = null;
-let page = null;
-let isLoggedIn = false;
+        .header p {
+            color: #666;
+            font-size: 0.9rem;
+        }
 
-// 初始化浏览器
-async function initBrowser() {
-    if (!browser) {
-        browser = await chromium.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor'
-            ]
+        .login-section {
+            text-align: center;
+            display: none;
+        }
+
+        .login-section.active {
+            display: block;
+        }
+
+        .qr-container {
+            display: inline-block;
+            padding: 1rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+        }
+
+        .qr-code {
+            width: 200px;
+            height: 200px;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .status-text {
+            color: #666;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .post-section {
+            display: none;
+        }
+
+        .post-section.active {
+            display: block;
+        }
+
+        .user-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .user-status {
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background-color 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 1rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            line-height: 1.5;
+            resize: vertical;
+            font-family: inherit;
+            margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .char-count {
+            text-align: right;
+            color: #666;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .char-count.warning {
+            color: #ffc107;
+        }
+
+        .char-count.error {
+            color: #dc3545;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.5rem;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-refresh {
+            background: #6c757d;
+            color: white;
+            width: auto;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .btn-refresh:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 1rem;
+            color: #999;
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 0.5rem;
+                padding: 1.5rem;
+            }
+            
+            .qr-code {
+                width: 160px;
+                height: 160px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 微博代理发送</h1>
+            <p>扫码登录微博，快速发送内容</p>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <!-- 登录区域 -->
+        <div id="loginSection" class="login-section">
+            <div class="qr-container">
+                <img id="qrCode" class="qr-code" src="" alt="二维码加载中...">
+            </div>
+            <div class="status-text">
+                <span id="loginStatus">请使用微博手机APP扫码登录</span>
+            </div>
+            <button id="refreshQR" class="btn btn-refresh">刷新二维码</button>
+        </div>
+
+        <!-- 发送区域 -->
+        <div id="postSection" class="post-section">
+            <div class="user-info">
+                <span class="user-status">✅ 已登录微博</span>
+                <button id="logoutBtn" class="logout-btn">退出登录</button>
+            </div>
+            
+            <textarea id="contentInput" class="textarea" placeholder="请输入要发送的微博内容..."></textarea>
+            
+            <div id="charCount" class="char-count">0/140</div>
+            
+            <button id="postBtn" class="btn btn-primary">发送微博</button>
+        </div>
+
+        <div class="footer">
+            <p>Powered by Playwright & Node.js</p>
+        </div>
+    </div>
+
+    <script>
+        class WeiboProxy {
+            constructor() {
+                this.isLoggedIn = false;
+                this.scanCheckInterval = null;
+                this.init();
+            }
+
+            async init() {
+                this.bindEvents();
+                await this.checkLoginStatus();
+            }
+
+            bindEvents() {
+                document.getElementById('refreshQR').addEventListener('click', () => this.refreshQRCode());
+                document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+                document.getElementById('postBtn').addEventListener('click', () => this.postWeibo());
+                document.getElementById('contentInput').addEventListener('input', (e) => this.updateCharCount(e.target.value));
+            }
+
+            async checkLoginStatus() {
+                try {
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+                    
+                    if (data.isLoggedIn) {
+                        this.showPostSection();
+                    } else {
+                        this.showLoginSection();
+                        await this.loadQRCode();
+                    }
+                } catch (error) {
+                    this.showAlert('检查登录状态失败: ' + error.message, 'error');
+                }
+            }
+
+            async loadQRCode() {
+                try {
+                    this.showAlert('正在获取二维码...', 'info');
+                    const response = await fetch('/api/qrcode');
+                    const data = await response.json();
+                    
+                    if (data.qrCodeUrl) {
+                        document.getElementById('qrCode').src = data.qrCodeUrl;
+                        this.startScanCheck();
+                        this.clearAlerts();
+                        this.updateLoginStatus('请使用微博手机APP扫码登录');
+                    } else {
+                        throw new Error('获取二维码失败');
+                    }
+                } catch (error) {
+                    this.showAlert('获取二维码失败: ' + error.message, 'error');
+                }
+            }
+
+            async refreshQRCode() {
+                this.stopScanCheck();
+                await this.loadQRCode();
+            }
+
+            startScanCheck() {
+                this.stopScanCheck();
+                this.scanCheckInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch('/api/scan-status');
+                        const data = await response.json();
+                        
+                        if (data.status === 'success') {
+                            this.stopScanCheck();
+                            this.showAlert('登录成功！', 'success');
+                            setTimeout(() => {
+                                this.showPostSection();
+                            }, 1000);
+                        } else if (data.status === 'error') {
+                            this.stopScanCheck();
+                            this.showAlert('登录失败: ' + data.message, 'error');
+                            this.updateLoginStatus('登录失败，请刷新二维码重试');
+                        } else {
+                            this.updateLoginStatus(data.message || '等待扫码中...');
+                        }
+                    } catch (error) {
+                        console.error('检查扫码状态失败:', error);
+                    }
+                }, 2000);
+            }
+
+            stopScanCheck() {
+                if (this.scanCheckInterval) {
+                    clearInterval(this.scanCheckInterval);
+                    this.scanCheckInterval = null;
+                }
+            }
+
+            async logout() {
+                try {
+                    const response = await fetch('/api/logout', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showAlert('退出登录成功', 'success');
+                        setTimeout(() => {
+                            this.showLoginSection();
+                            this.loadQRCode();
+                        }, 1000);
+                    }
+                } catch (error) {
+                    this.showAlert('退出登录失败: ' + error.message, 'error');
+                }
+            }
+
+            async postWeibo() {
+                const content = document.getElementById('contentInput').value.trim();
+                
+                if (!content) {
+                    this.showAlert('请输入微博内容', 'error');
+                    return;
+                }
+
+                if (content.length > 140) {
+                    this.showAlert('微博内容超过140字符限制', 'error');
+                    return;
+                }
+
+                const postBtn = document.getElementById('postBtn');
+                const originalText = postBtn.textContent;
+                postBtn.disabled = true;
+                postBtn.innerHTML = '<span class="loading"></span>发送中...';
+
+                try {
+                    const response = await fetch('/api/post', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ content })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.showAlert('微博发送成功！', 'success');
+                        document.getElementById('contentInput').value = '';
+                        this.updateCharCount('');
+                    } else {
+                        throw new Error(data.error || '发送失败');
+                    }
+                } catch (error) {
+                    this.showAlert('发送失败: ' + error.message, 'error');
+                } finally {
+                    postBtn.disabled = false;
+                    postBtn.textContent = originalText;
+                }
+            }
+
+            updateCharCount(content) {
+                const count = content.length;
+                const charCountEl = document.getElementById('charCount');
+                charCountEl.textContent = `${count}/140`;
+                
+                charCountEl.className = 'char-count';
+                if (count > 120) {
+                    charCountEl.classList.add('warning');
+                }
+                if (count > 140) {
+                    charCountEl.classList.add('error');
+                }
+            }
+
+            showLoginSection() {
+                document.getElementById('loginSection').classList.add('active');
+                document.getElementById('postSection').classList.remove('active');
+                this.isLoggedIn = false;
+            }
+
+            showPostSection() {
+                document.getElementById('loginSection').classList.remove('active');
+                document.getElementById('postSection').classList.add('active');
+                this.isLoggedIn = true;
+                this.stopScanCheck();
+                this.clearAlerts();
+            }
+
+            updateLoginStatus(message) {
+                document.getElementById('loginStatus').textContent = message;
+            }
+
+            showAlert(message, type = 'info') {
+                const alertContainer = document.getElementById('alertContainer');
+                const alert = document.createElement('div');
+                alert.className = `alert alert-${type}`;
+                alert.textContent = message;
+                
+                alertContainer.innerHTML = '';
+                alertContainer.appendChild(alert);
+                
+                if (type === 'success' || type === 'info') {
+                    setTimeout(() => {
+                        if (alert.parentNode) {
+                            alert.remove();
+                        }
+                    }, 3000);
+                }
+            }
+
+            clearAlerts() {
+                document.getElementById('alertContainer').innerHTML = '';
+            }
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            new WeiboProxy();
         });
-    }
-    
-    if (!context) {
-        // 尝试恢复会话
-        const sessionData = await loadSession();
-        if (sessionData) {
-            context = await browser.newContext({
-                storageState: sessionData
-            });
-        } else {
-            context = await browser.newContext({
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            });
-        }
-    }
-    
-    if (!page) {
-        page = await context.newPage();
-    }
-}
-
-// 保存会话
-async function saveSession() {
-    if (context) {
-        const sessionData = await context.storageState();
-        await fs.writeJson(SESSION_FILE, sessionData);
-        console.log('会话已保存');
-    }
-}
-
-// 加载会话
-async function loadSession() {
-    try {
-        if (await fs.pathExists(SESSION_FILE)) {
-            const sessionData = await fs.readJson(SESSION_FILE);
-            console.log('会话已加载');
-            return sessionData;
-        }
-    } catch (error) {
-        console.log('加载会话失败:', error.message);
-    }
-    return null;
-}
-
-// 检查登录状态
-async function checkLoginStatus() {
-    try {
-        await initBrowser();
-        await page.goto('https://weibo.com', { waitUntil: 'networkidle' });
-        
-        // 检查是否存在登录用户信息
-        try {
-            await page.waitForSelector('.gn_name', { timeout: 5000 });
-            isLoggedIn = true;
-            console.log('用户已登录');
-            return true;
-        } catch {
-            isLoggedIn = false;
-            console.log('用户未登录');
-            return false;
-        }
-    } catch (error) {
-        console.error('检查登录状态失败:', error);
-        isLoggedIn = false;
-        return false;
-    }
-}
-
-// 获取二维码
-async function getQRCode() {
-    try {
-        await initBrowser();
-        await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog', {
-            waitUntil: 'networkidle'
-        });
-        
-        // 等待二维码加载
-        await page.waitForSelector('img[src*="qr.weibo.cn"]', { timeout: 10000 });
-        
-        // 获取二维码图片URL
-        const qrCodeUrl = await page.getAttribute('img[src*="qr.weibo.cn"]', 'src');
-        
-        if (qrCodeUrl) {
-            console.log('二维码获取成功');
-            return qrCodeUrl;
-        } else {
-            throw new Error('未找到二维码');
-        }
-    } catch (error) {
-        console.error('获取二维码失败:', error);
-        throw error;
-    }
-}
-
-// 检查扫码状态
-async function checkScanStatus() {
-    try {
-        // 检查是否跳转到主页面
-        const currentUrl = page.url();
-        if (currentUrl.includes('weibo.com') && !currentUrl.includes('passport')) {
-            isLoggedIn = true;
-            await saveSession();
-            return { status: 'success', message: '登录成功' };
-        }
-        
-        // 检查是否有错误提示
-        const errorElement = await page.$('.txt_red');
-        if (errorElement) {
-            const errorText = await errorElement.textContent();
-            return { status: 'error', message: errorText };
-        }
-        
-        return { status: 'waiting', message: '等待扫码' };
-    } catch (error) {
-        console.error('检查扫码状态失败:', error);
-        return { status: 'error', message: '检查状态失败' };
-    }
-}
-
-// 发送微博
-async function postWeibo(content) {
-    try {
-        if (!isLoggedIn) {
-            throw new Error('用户未登录');
-        }
-        
-        await initBrowser();
-        await page.goto('https://weibo.com', { waitUntil: 'networkidle' });
-        
-        // 等待发布框加载
-        await page.waitForSelector('textarea[node-type="text"]', { timeout: 10000 });
-        
-        // 输入内容
-        await page.fill('textarea[node-type="text"]', content);
-        
-        // 点击发布按钮
-        await page.click('a[node-type="submit"]');
-        
-        // 等待发布完成
-        await page.waitForTimeout(3000);
-        
-        // 检查是否发布成功
-        const successElement = await page.$('.W_tips_success');
-        if (successElement) {
-            console.log('微博发送成功');
-            return { success: true, message: '微博发送成功' };
-        } else {
-            throw new Error('发布可能失败，请检查');
-        }
-    } catch (error) {
-        console.error('发送微博失败:', error);
-        throw error;
-    }
-}
-
-// API路由
-
-// 检查登录状态
-app.get('/api/status', async (req, res) => {
-    try {
-        const loginStatus = await checkLoginStatus();
-        res.json({ isLoggedIn: loginStatus });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 获取二维码
-app.get('/api/qrcode', async (req, res) => {
-    try {
-        const qrCodeUrl = await getQRCode();
-        res.json({ qrCodeUrl });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 检查扫码状态
-app.get('/api/scan-status', async (req, res) => {
-    try {
-        const status = await checkScanStatus();
-        res.json(status);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 发送微博
-app.post('/api/post', async (req, res) => {
-    try {
-        const { content } = req.body;
-        if (!content) {
-            return res.status(400).json({ error: '内容不能为空' });
-        }
-        
-        const result = await postWeibo(content);
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 退出登录
-app.post('/api/logout', async (req, res) => {
-    try {
-        // 删除会话文件
-        if (await fs.pathExists(SESSION_FILE)) {
-            await fs.remove(SESSION_FILE);
-        }
-        
-        // 重置状态
-        isLoggedIn = false;
-        
-        // 关闭浏览器上下文
-        if (context) {
-            await context.close();
-            context = null;
-            page = null;
-        }
-        
-        res.json({ success: true, message: '退出登录成功' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// 服务器关闭时清理资源
-process.on('SIGINT', async () => {
-    console.log('正在关闭服务器...');
-    if (browser) {
-        await browser.close();
-    }
-    process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-    console.log('正在关闭服务器...');
-    if (browser) {
-        await browser.close();
-    }
-    process.exit(0);
-});
-
-app.listen(PORT, () => {
-    console.log(`服务器运行在端口 ${PORT}`);
-    console.log(`访问地址: http://localhost:${PORT}`);
-});
+    </script>
+</body>
+</html>
