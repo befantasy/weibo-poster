@@ -1,26 +1,252 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <!-- 原有 head 保持不变 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>微博代理发送服务</title>
     <style>
-        /* 原有样式保持不变 */
-        /* ...（略去原样式，未作任何更改）... */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-        .token-input {
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 2rem;
             width: 100%;
-            padding: 0.5rem;
+            max-width: 500px;
+            margin: 1rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 0.5rem;
+            font-size: 1.8rem;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .login-section {
+            text-align: center;
+            display: none;
+        }
+
+        .login-section.active {
+            display: block;
+        }
+
+        .qr-container {
+            display: inline-block;
+            padding: 1rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+        }
+
+        .qr-code {
+            width: 200px;
+            height: 200px;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .status-text {
+            color: #666;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .post-section {
+            display: none;
+        }
+
+        .post-section.active {
+            display: block;
+        }
+
+        .user-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .user-status {
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background-color 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 1rem;
             border: 2px solid #e1e5e9;
             border-radius: 8px;
             font-size: 1rem;
+            line-height: 1.5;
+            resize: vertical;
+            font-family: inherit;
+            margin-bottom: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .char-count {
+            text-align: right;
+            color: #666;
+            font-size: 0.8rem;
             margin-bottom: 1rem;
         }
 
-        .token-input:focus {
-            outline: none;
-            border-color: #667eea;
+        .char-count.warning {
+            color: #ffc107;
+        }
+
+        .char-count.error {
+            color: #dc3545;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.5rem;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-refresh {
+            background: #6c757d;
+            color: white;
+            width: auto;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .btn-refresh:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 1rem;
+            color: #999;
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 0.5rem;
+                padding: 1.5rem;
+            }
+            
+            .qr-code {
+                width: 160px;
+                height: 160px;
+            }
         }
     </style>
 </head>
@@ -50,12 +276,11 @@
                 <span class="user-status">✅ 已登录微博</span>
                 <button id="logoutBtn" class="logout-btn">退出登录</button>
             </div>
-
-            <!-- 新增 token 输入栏 -->
-            <input type="text" id="tokenInput" class="token-input" placeholder="请输入 API Token">
-
+            
             <textarea id="contentInput" class="textarea" placeholder="请输入要发送的微博内容..."></textarea>
+            
             <div id="charCount" class="char-count">0/140</div>
+            
             <button id="postBtn" class="btn btn-primary">发送微博</button>
         </div>
 
@@ -74,7 +299,6 @@
 
             async init() {
                 this.bindEvents();
-                this.restoreToken();  // 恢复 token
                 await this.checkLoginStatus();
             }
 
@@ -83,16 +307,6 @@
                 document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
                 document.getElementById('postBtn').addEventListener('click', () => this.postWeibo());
                 document.getElementById('contentInput').addEventListener('input', (e) => this.updateCharCount(e.target.value));
-                document.getElementById('tokenInput').addEventListener('input', (e) => {
-                    localStorage.setItem('weibo_token', e.target.value.trim());
-                });
-            }
-
-            restoreToken() {
-                const savedToken = localStorage.getItem('weibo_token');
-                if (savedToken) {
-                    document.getElementById('tokenInput').value = savedToken;
-                }
             }
 
             async checkLoginStatus() {
@@ -187,13 +401,7 @@
 
             async postWeibo() {
                 const content = document.getElementById('contentInput').value.trim();
-                const token = document.getElementById('tokenInput').value.trim();
-
-                if (!token) {
-                    this.showAlert('请填写 Token', 'error');
-                    return;
-                }
-
+                
                 if (!content) {
                     this.showAlert('请输入微博内容', 'error');
                     return;
@@ -213,8 +421,7 @@
                     const response = await fetch('/api/post', {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
+                            'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({ content })
                     });
