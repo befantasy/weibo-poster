@@ -32,7 +32,7 @@ weibo-proxy/
 
 ### 1. 克隆项目
 ```bash
-git clone <repository-url>
+git clone https://github.com/befantasy/weibo-poster.git
 cd weibo-proxy
 ```
 
