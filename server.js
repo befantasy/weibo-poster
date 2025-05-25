@@ -1,3 +1,5 @@
+require('dotenv').config(); // 加载 .env 文件
+const AUTH_TOKEN = process.env.AUTH_TOKEN || 'weibo-proxy'; // 鉴权 token
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -13,6 +15,21 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
+
+// 鉴权中间件
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token || token !== AUTH_TOKEN) {
+        return res.status(401).json({ error: '未经授权：Token 无效或缺失' });
+    }
+
+    next();
+}
+
+// 应用鉴权中间件到所有 /api 路由
+app.use('/api', authenticateToken);
 
 // 数据存储路径
 const DATA_DIR = path.join(__dirname, 'data');
