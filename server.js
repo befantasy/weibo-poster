@@ -130,7 +130,7 @@ async function getQRCode() {
     try {
         await initBrowser();
         await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog', {
-            waitUntil: 'networkidle'
+            waitUntil: 'domcontentloaded'
         });
         
         // 等待二维码加载
