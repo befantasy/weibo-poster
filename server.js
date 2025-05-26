@@ -299,9 +299,12 @@ async function checkScanStatus() {
         await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
 
         const currentUrl = page.url();
+        console.log('当前页面URL:', currentUrl); // 增加调试日志
+        
         if (currentUrl.includes('weibo.com') && !currentUrl.includes('passport')) {
             isLoggedIn = true;
             await saveSession();
+            console.log('✅ 用户扫码登录成功！'); // 新增：登录成功日志
             return { status: 'success', message: '登录成功' };
         }
 
@@ -309,10 +312,34 @@ async function checkScanStatus() {
         const errorElement = await page.$('.txt_red').catch(() => null);
         if (errorElement) {
             const errorText = await errorElement.textContent();
+            console.log('❌ 扫码登录失败:', errorText); // 增加错误日志
             return { status: 'error', message: errorText };
         }
 
-        return { status: 'waiting', message: '等待扫码' };
+        // 检查二维码是否过期
+        const expiredElement = await page.$('text=二维码已失效').catch(() => null);
+        if (expiredElement) {
+            console.log('⏰ 二维码已过期'); // 增加过期日志
+            return { status: 'error', message: '二维码已过期，请刷新' };
+        }
+
+        // 检查扫码状态提示文字
+        const statusElements = await page.$$('.txt').catch(() => []);
+        let statusMessage = '等待扫码';
+        
+        for (const element of statusElements) {
+            const text = await element.textContent().catch(() => '');
+            if (text.includes('扫描成功') || text.includes('请确认')) {
+                statusMessage = '扫描成功，请在手机上确认登录';
+                console.log('📱 用户已扫码，等待确认'); // 增加扫码成功但未确认的日志
+                break;
+            } else if (text.includes('等待') || text.includes('扫描')) {
+                statusMessage = text;
+                break;
+            }
+        }
+
+        return { status: 'waiting', message: statusMessage };
     } catch (error) {
         console.error('检查扫码状态失败:', error.message);
         return { status: 'error', message: '检查状态失败: ' + error.message };
