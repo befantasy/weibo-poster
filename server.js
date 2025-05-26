@@ -11,26 +11,18 @@ const PORT = process.env.PORT || 3000;
 // 中间件
 app.use(cors());
 
-// 改进的 JSON 解析中间件，添加错误处理
+// 修复后的JSON解析中间件
 app.use(express.json({
     limit: '10mb',
-    verify: (req, res, buf, encoding) => {
-        try {
-            JSON.parse(buf);
-        } catch (error) {
-            console.error('JSON 解析错误:', error.message);
-            console.error('原始数据:', buf.toString());
-            throw new Error('Invalid JSON format');
-        }
-    }
+    // 移除 verify 函数，让 express.json() 自己处理解析
+    // verify 函数会导致请求体被读取两次，可能引发问题
 }));
 
-// 添加原始 body 解析，以便调试
 app.use('/api', (req, res, next) => {
-    console.log('请求方法:', req.method);
-    console.log('请求路径:', req.path);
-    console.log('Content-Type:', req.get('Content-Type'));
-    console.log('请求体:', req.body);
+    // 只在有请求体且Content-Type为application/json时验证
+    if (req.method !== 'GET' && req.get('Content-Type')?.includes('application/json') && req.body === undefined) {
+        return res.status(400).json({ error: '请求体JSON格式错误' });
+    }
     next();
 });
 
@@ -487,13 +479,32 @@ app.get('/health', (req, res) => {
     });
 });
 
-// 错误处理中间件
+// 更精确的错误处理中间件
 app.use((err, req, res, next) => {
-    if (err.message === 'Invalid JSON format') {
-        return res.status(400).json({ error: '请求体 JSON 格式错误' });
+    console.error('错误详情:', {
+        message: err.message,
+        stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
+        url: req.url,
+        method: req.method
+    });
+
+    // 根据错误类型返回不同的响应
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        return res.status(400).json({ 
+            error: '请求体JSON格式错误',
+            details: process.env.NODE_ENV !== 'production' ? err.message : undefined
+        });
     }
-    console.error('未处理的错误:', err);
-    res.status(500).json({ error: '服务器内部错误' });
+    
+    if (err.type === 'entity.too.large') {
+        return res.status(413).json({ error: '请求体过大' });
+    }
+    
+    // 其他未知错误
+    res.status(500).json({ 
+        error: '服务器内部错误',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // 服务器关闭时清理资源
