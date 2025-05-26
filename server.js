@@ -30,8 +30,8 @@ app.use('/api', (req, res, next) => {
 app.use('/api', (req, res, next) => {
     console.log('请求方法:', req.method);
     console.log('请求路径:', req.path);
-    console.log('Content-Type:', req.get('Content-Type'));
-    console.log('请求体:', req.body);
+    console.log('请求类型:', req.get('Content-Type'));
+    console.log('请求内容:', req.body);
     next();
 });
 
