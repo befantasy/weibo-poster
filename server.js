@@ -488,8 +488,11 @@ app.get('/health', (req, res) => {
 });
 
 // 错误处理中间件
-app.use((error, req, res, next) => {
-    console.error('未捕获的错误:', error);
+app.use((err, req, res, next) => {
+    if (err.message === 'Invalid JSON format') {
+        return res.status(400).json({ error: '请求体 JSON 格式错误' });
+    }
+    console.error('未处理的错误:', err);
     res.status(500).json({ error: '服务器内部错误' });
 });
 
