@@ -28,15 +28,15 @@ app.use('/api', (req, res, next) => {
 
 // 添加原始 body 解析，以便调试
 app.use('/api', (req, res, next) => {
-    // 对于 /api/scan-status 路径，只打印请求路径
-    if (req.path === '/scan-status') {
-        console.log('请求路径:', req.path);
-    } else {
-        // 对于其他 /api 下的路径，打印完整信息
+    // 只有 /api/post 路径需要显示完整的请求信息
+    if (req.path === '/post') {
         console.log('请求方法:', req.method);
         console.log('请求路径:', req.path);
         console.log('请求类型:', req.get('Content-Type'));
         console.log('请求内容:', req.body);
+    } else {
+        // 其他所有 /api 路径只显示请求路径
+        console.log('请求路径:', req.path);
     }
     next();
 });
