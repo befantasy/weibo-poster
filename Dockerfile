@@ -8,8 +8,8 @@ WORKDIR /app
 # 复制 package 文件
 COPY package*.json ./
 
-# 安装所有依赖（包括 devDependencies）
-RUN npm ci --only=production && npm cache clean --force
+# 安装生产依赖
+RUN npm install --omit=dev && npm cache clean --force
 
 # 第二阶段：运行时阶段
 FROM mcr.microsoft.com/playwright:v1.52.0-jammy AS runtime
