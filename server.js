@@ -110,7 +110,7 @@ async function initBrowser() {
                     '--disable-renderer-backgrounding',
                     '--memory-pressure-off',
                     // 新增优化参数
-                    '--max_old_space_size=256',
+                    '--max_old_space_size=384',
                     '--disable-background-networking',
                     '--disable-ipc-flooding-protection',
                     '--disable-features=Translate,BackForwardCache,AcceptCHFrame',
