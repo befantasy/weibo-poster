@@ -11,7 +11,7 @@ COPY package*.json ./
 RUN npm config set registry https://registry.npmmirror.com
 
 # 生成package-lock.json（如果不存在）并安装依赖
-RUN npm install --only=production && npm cache clean --force
+RUN npm install --only=production && npm cache clean --force && \
     rm -rf /tmp/* /var/tmp/* && \
     # 清理 apt 缓存
     apt-get clean && \
