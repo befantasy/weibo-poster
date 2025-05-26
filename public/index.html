@@ -438,345 +438,334 @@
     </div>
 
     <script>
-        class WeiboProxy {
-            constructor() {
-                this.isLoggedIn = false;
-                this.scanCheckInterval = null;
-                this.apiToken = '';
-                this.init();
-            }
-
-            async init() {
-                this.loadToken();
-                this.bindEvents();
-                
-                if (this.apiToken) {
-                    await this.checkLoginStatus();
-                } else {
-                    this.showTokenSection();
-                }
-            }
-
-            bindEvents() {
-                // Token 相关事件
-                document.getElementById('tokenToggle').addEventListener('click', () => this.toggleTokenVisibility());
-                document.getElementById('saveTokenBtn').addEventListener('click', () => this.saveToken());
-                document.getElementById('clearTokenBtn').addEventListener('click', () => this.clearToken());
-                document.getElementById('tokenInput').addEventListener('input', () => this.validateTokenInput());
-                document.getElementById('tokenInput').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') this.saveToken();
-                });
-
-                // 微博相关事件
-                document.getElementById('refreshQR').addEventListener('click', () => this.refreshQRCode());
-                document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
-                document.getElementById('configBtn').addEventListener('click', () => this.showTokenSection());
-                document.getElementById('postBtn').addEventListener('click', () => this.postWeibo());
-                document.getElementById('contentInput').addEventListener('input', (e) => this.updateCharCount(e.target.value));
-            }
-
-            // Token 管理
-            loadToken() {
-                const stored = localStorage.getItem('weibo_proxy_token');
-                if (stored) {
-                    this.apiToken = stored;
-                    document.getElementById('tokenInput').value = stored;
-                    this.updateTokenStatus('valid', '✅ Token 已加载');
-                }
-            }
-
-            saveToken() {
-                const token = document.getElementById('tokenInput').value.trim();
-                if (!token) {
-                    this.showAlert('请输入 Token', 'error');
-                    return;
-                }
-
-                this.apiToken = token;
-                localStorage.setItem('weibo_proxy_token', token);
-                this.updateTokenStatus('valid', '✅ Token 已保存');
-                this.showAlert('Token 保存成功', 'success');
-                
-                // 保存后自动检查登录状态
-                setTimeout(() => {
-                    this.checkLoginStatus();
-                }, 1000);
-            }
-
-            clearToken() {
-                this.apiToken = '';
-                localStorage.removeItem('weibo_proxy_token');
-                document.getElementById('tokenInput').value = '';
-                this.updateTokenStatus('invalid', '❌ Token 已清除');
-                this.showAlert('Token 已清除', 'info');
-                this.showTokenSection();
-            }
-
-            validateTokenInput() {
-                const token = document.getElementById('tokenInput').value.trim();
-                if (token) {
-                    this.updateTokenStatus('pending', '⏳ 请保存 Token');
-                } else {
-                    this.updateTokenStatus('invalid', '❌ Token 不能为空');
-                }
-            }
-
-            toggleTokenVisibility() {
-                const input = document.getElementById('tokenInput');
-                const toggle = document.getElementById('tokenToggle');
-                
-                if (input.type === 'password') {
-                    input.type = 'text';
-                    toggle.textContent = '🙈';
-                } else {
-                    input.type = 'password';
-                    toggle.textContent = '👁️';
-                }
-            }
-
-            updateTokenStatus(type, message) {
-                const status = document.getElementById('tokenStatus');
-                status.className = `token-status ${type}`;
-                status.textContent = message;
-                status.style.display = 'block';
-            }
-
-            // 页面切换
-            showTokenSection() {
-                document.getElementById('tokenSection').classList.add('active');
-                document.getElementById('loginSection').classList.remove('active');
-                document.getElementById('postSection').classList.remove('active');
-                this.stopScanCheck();
-            }
-
-            showLoginSection() {
-                document.getElementById('tokenSection').classList.remove('active');
-                document.getElementById('loginSection').classList.add('active');
-                document.getElementById('postSection').classList.remove('active');
-                this.isLoggedIn = false;
-            }
-
-            showPostSection() {
-                document.getElementById('tokenSection').classList.remove('active');
-                document.getElementById('loginSection').classList.remove('active');
-                document.getElementById('postSection').classList.add('active');
-                this.isLoggedIn = true;
-                this.stopScanCheck();
-                this.clearAlerts();
-            }
-
-            // API 请求方法
-            async apiRequest(url, options = {}) {
-                if (!this.apiToken) {
-                    throw new Error('API Token 未配置');
-                }
-
-                const headers = {
-                    'Authorization': `Bearer ${this.apiToken}`,
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                };
-
-                const response = await fetch(url, {
-                    ...options,
-                    headers
-                });
-
-                if (response.status === 401) {
-                    this.showAlert('Token 无效或已过期，请重新配置', 'error');
-                    this.showTokenSection();
-                    throw new Error('Token 无效');
-                }
-
-                return response;
-            }
-
-            async checkLoginStatus() {
-                if (!this.apiToken) {
-                    this.showTokenSection();
-                    return;
-                }
-
-                try {
-                    const response = await this.apiRequest('/api/status');
-                    const data = await response.json();
-                    
-                    if (data.isLoggedIn) {
-                        this.showPostSection();
-                    } else {
-                        this.showLoginSection();
-                        await this.loadQRCode();
-                    }
-                } catch (error) {
-                    if (error.message !== 'Token 无效') {
-                        this.showAlert('检查登录状态失败: ' + error.message, 'error');
-                    }
-                }
-            }
-
-            async loadQRCode() {
-                try {
-                    this.showAlert('正在获取二维码...', 'info');
-                    const response = await this.apiRequest('/api/qrcode');
-                    const data = await response.json();
-                    
-                    if (data.qrCodeUrl) {
-                        document.getElementById('qrCode').src = data.qrCodeUrl;
-                        this.startScanCheck();
-                        this.clearAlerts();
-                        this.updateLoginStatus('请使用微博手机APP扫码登录');
-                    } else {
-                        throw new Error('获取二维码失败');
-                    }
-                } catch (error) {
-                    if (error.message !== 'Token 无效') {
-                        this.showAlert('获取二维码失败: ' + error.message, 'error');
-                    }
-                }
-            }
-
-            async refreshQRCode() {
-                this.stopScanCheck();
-                await this.loadQRCode();
-            }
-
-            startScanCheck() {
-                this.stopScanCheck();
-                this.scanCheckInterval = setInterval(async () => {
-                    try {
-                        const response = await this.apiRequest('/api/scan-status');
-                        const data = await response.json();
-                        
-                        if (data.status === 'success') {
-                            this.stopScanCheck();
-                            this.showAlert('登录成功！', 'success');
-                            setTimeout(() => {
-                                this.showPostSection();
-                            }, 1000);
-                        } else if (data.status === 'error') {
-                            this.stopScanCheck();
-                            this.showAlert('登录失败: ' + data.message, 'error');
-                            this.updateLoginStatus('登录失败，请刷新二维码重试');
-                        } else {
-                            this.updateLoginStatus(data.message || '等待扫码中...');
-                        }
-                    } catch (error) {
-                        if (error.message !== 'Token 无效') {
-                            console.error('检查扫码状态失败:', error);
-                        }
-                    }
-                }, 2000);
-            }
-
-            stopScanCheck() {
-                if (this.scanCheckInterval) {
-                    clearInterval(this.scanCheckInterval);
-                    this.scanCheckInterval = null;
-                }
-            }
-
-            async logout() {
-                try {
-                    const response = await this.apiRequest('/api/logout', { method: 'POST' });
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.showAlert('退出登录成功', 'success');
-                        setTimeout(() => {
-                            this.showLoginSection();
-                            this.loadQRCode();
-                        }, 1000);
-                    }
-                } catch (error) {
-                    if (error.message !== 'Token 无效') {
-                        this.showAlert('退出登录失败: ' + error.message, 'error');
-                    }
-                }
-            }
-
-            async postWeibo() {
-                const content = document.getElementById('contentInput').value.trim();
-                
-                if (!content) {
-                    this.showAlert('请输入微博内容', 'error');
-                    return;
-                }
-
-                if (content.length > 140) {
-                    this.showAlert('微博内容超过140字符限制', 'error');
-                    return;
-                }
-
-                const postBtn = document.getElementById('postBtn');
-                const originalText = postBtn.textContent;
-                postBtn.disabled = true;
-                postBtn.innerHTML = '<span class="loading"></span>发送中...';
-
-                try {
-                    const response = await this.apiRequest('/api/post', {
-                        method: 'POST',
-                        body: JSON.stringify({ content })
-                    });
-
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        this.showAlert('微博发送成功！', 'success');
-                        document.getElementById('contentInput').value = '';
-                        this.updateCharCount('');
-                    } else {
-                        throw new Error(data.error || '发送失败');
-                    }
-                } catch (error) {
-                    if (error.message !== 'Token 无效') {
-                        this.showAlert('发送失败: ' + error.message, 'error');
-                    }
-                } finally {
-                    postBtn.disabled = false;
-                    postBtn.textContent = originalText;
-                }
-            }
-
-            updateCharCount(content) {
-                const count = content.length;
-                const charCountEl = document.getElementById('charCount');
-                charCountEl.textContent = `${count}/140`;
-                
-                charCountEl.className = 'char-count';
-                if (count > 120) {
-                    charCountEl.classList.add('warning');
-                }
-                if (count > 140) {
-                    charCountEl.classList.add('error');
-                }
-            }
-
-            updateLoginStatus(message) {
-                document.getElementById('loginStatus').textContent = message;
-            }
-
-            showAlert(message, type = 'info') {
-                const alertContainer = document.getElementById('alertContainer');
-                const alert = document.createElement('div');
-                alert.className = `alert alert-${type}`;
-                alert.textContent = message;
-                
-                alertContainer.innerHTML = '';
-                alertContainer.appendChild(alert);
-                
-                if (type === 'success' || type === 'info') {
-                    setTimeout(() => {
-                        if (alert.parentNode) {
-                            alert.remove();
-                        }
-                    }, 3000);
-                }
-            }
-
-            clearAlerts() {
-                document.getElementById('alertContainer').innerHTML = '';
-            }
-        }
+		class WeiboProxy {
+		    constructor() {
+		        this.isLoggedIn = false;
+		        this.scanCheckInterval = null;
+		        this.scanStartTime = null; // 新增：记录扫码开始时间
+		        this.scanTimeout = 1 * 60 * 1000; // 新增：扫码超时时间 1分钟
+		        this.apiToken = '';
+		        this.init();
+		    }
+		    async init() {
+		        this.loadToken();
+		        this.bindEvents();
+		        
+		        if (this.apiToken) {
+		            await this.checkLoginStatus();
+		        } else {
+		            this.showTokenSection();
+		        }
+		    }
+		    bindEvents() {
+		        // Token 相关事件
+		        document.getElementById('tokenToggle').addEventListener('click', () => this.toggleTokenVisibility());
+		        document.getElementById('saveTokenBtn').addEventListener('click', () => this.saveToken());
+		        document.getElementById('clearTokenBtn').addEventListener('click', () => this.clearToken());
+		        document.getElementById('tokenInput').addEventListener('input', () => this.validateTokenInput());
+		        document.getElementById('tokenInput').addEventListener('keypress', (e) => {
+		            if (e.key === 'Enter') this.saveToken();
+		        });
+		        // 微博相关事件
+		        document.getElementById('refreshQR').addEventListener('click', () => this.refreshQRCode());
+		        document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+		        document.getElementById('configBtn').addEventListener('click', () => this.showTokenSection());
+		        document.getElementById('postBtn').addEventListener('click', () => this.postWeibo());
+		        document.getElementById('contentInput').addEventListener('input', (e) => this.updateCharCount(e.target.value));
+		    }
+		    // Token 管理
+		    loadToken() {
+		        const stored = localStorage.getItem('weibo_proxy_token');
+		        if (stored) {
+		            this.apiToken = stored;
+		            document.getElementById('tokenInput').value = stored;
+		            this.updateTokenStatus('valid', '✅ Token 已加载');
+		        }
+		    }
+		    saveToken() {
+		        const token = document.getElementById('tokenInput').value.trim();
+		        if (!token) {
+		            this.showAlert('请输入 Token', 'error');
+		            return;
+		        }
+		        this.apiToken = token;
+		        localStorage.setItem('weibo_proxy_token', token);
+		        this.updateTokenStatus('valid', '✅ Token 已保存');
+		        this.showAlert('Token 保存成功', 'success');
+		        
+		        // 保存后自动检查登录状态
+		        setTimeout(() => {
+		            this.checkLoginStatus();
+		        }, 1000);
+		    }
+		    clearToken() {
+		        this.apiToken = '';
+		        localStorage.removeItem('weibo_proxy_token');
+		        document.getElementById('tokenInput').value = '';
+		        this.updateTokenStatus('invalid', '❌ Token 已清除');
+		        this.showAlert('Token 已清除', 'info');
+		        this.showTokenSection();
+		    }
+		    validateTokenInput() {
+		        const token = document.getElementById('tokenInput').value.trim();
+		        if (token) {
+		            this.updateTokenStatus('pending', '⏳ 请保存 Token');
+		        } else {
+		            this.updateTokenStatus('invalid', '❌ Token 不能为空');
+		        }
+		    }
+		    toggleTokenVisibility() {
+		        const input = document.getElementById('tokenInput');
+		        const toggle = document.getElementById('tokenToggle');
+		        
+		        if (input.type === 'password') {
+		            input.type = 'text';
+		            toggle.textContent = '🙈';
+		        } else {
+		            input.type = 'password';
+		            toggle.textContent = '👁️';
+		        }
+		    }
+		    updateTokenStatus(type, message) {
+		        const status = document.getElementById('tokenStatus');
+		        status.className = `token-status ${type}`;
+		        status.textContent = message;
+		        status.style.display = 'block';
+		    }
+		    // 页面切换
+		    showTokenSection() {
+		        document.getElementById('tokenSection').classList.add('active');
+		        document.getElementById('loginSection').classList.remove('active');
+		        document.getElementById('postSection').classList.remove('active');
+		        this.stopScanCheck();
+		    }
+		    showLoginSection() {
+		        document.getElementById('tokenSection').classList.remove('active');
+		        document.getElementById('loginSection').classList.add('active');
+		        document.getElementById('postSection').classList.remove('active');
+		        this.isLoggedIn = false;
+		    }
+		    showPostSection() {
+		        document.getElementById('tokenSection').classList.remove('active');
+		        document.getElementById('loginSection').classList.remove('active');
+		        document.getElementById('postSection').classList.add('active');
+		        this.isLoggedIn = true;
+		        this.stopScanCheck();
+		        this.clearAlerts();
+		    }
+		    // API 请求方法
+		    async apiRequest(url, options = {}) {
+		        if (!this.apiToken) {
+		            throw new Error('API Token 未配置');
+		        }
+		        const headers = {
+		            'Authorization': `Bearer ${this.apiToken}`,
+		            'Content-Type': 'application/json',
+		            ...options.headers
+		        };
+		        const response = await fetch(url, {
+		            ...options,
+		            headers
+		        });
+		        if (response.status === 401) {
+		            this.showAlert('Token 无效或已过期，请重新配置', 'error');
+		            this.showTokenSection();
+		            throw new Error('Token 无效');
+		        }
+		        return response;
+		    }
+		    async checkLoginStatus() {
+		        if (!this.apiToken) {
+		            this.showTokenSection();
+		            return;
+		        }
+		        try {
+		            const response = await this.apiRequest('/api/status');
+		            const data = await response.json();
+		            
+		            if (data.isLoggedIn) {
+		                this.showPostSection();
+		            } else {
+		                this.showLoginSection();
+		                await this.loadQRCode();
+		            }
+		        } catch (error) {
+		            if (error.message !== 'Token 无效') {
+		                this.showAlert('检查登录状态失败: ' + error.message, 'error');
+		            }
+		        }
+		    }
+		    async loadQRCode() {
+		        try {
+		            this.showAlert('正在获取二维码...', 'info');
+		            const response = await this.apiRequest('/api/qrcode');
+		            const data = await response.json();
+		            
+		            if (data.qrCodeUrl) {
+		                document.getElementById('qrCode').src = data.qrCodeUrl;
+		                this.startScanCheck();
+		                this.clearAlerts();
+		                this.updateLoginStatus('请使用微博手机APP扫码登录');
+		            } else {
+		                throw new Error('获取二维码失败');
+		            }
+		        } catch (error) {
+		            if (error.message !== 'Token 无效') {
+		                this.showAlert('获取二维码失败: ' + error.message, 'error');
+		            }
+		        }
+		    }
+		    async refreshQRCode() {
+		        this.stopScanCheck();
+		        await this.loadQRCode();
+		    }
+		    // 修复：增加扫码总超时时间
+		    startScanCheck() {
+		        this.stopScanCheck();
+		        this.scanStartTime = Date.now(); // 记录开始时间
+		        
+		        this.scanCheckInterval = setInterval(async () => {
+		            try {
+		                // 检查是否超时
+		                const elapsed = Date.now() - this.scanStartTime;
+		                if (elapsed > this.scanTimeout) {
+		                    this.stopScanCheck();
+		                    this.showAlert('扫码已超时，请刷新二维码重试', 'error');
+		                    this.updateLoginStatus('扫码超时，请刷新二维码');
+		                    return;
+		                }
+		                
+		                // 显示剩余时间
+		                const remainingTime = Math.ceil((this.scanTimeout - elapsed) / 1000);
+		                const minutes = Math.floor(remainingTime / 60);
+		                const seconds = remainingTime % 60;
+		                
+		                const response = await this.apiRequest('/api/scan-status');
+		                const data = await response.json();
+		                
+		                if (data.status === 'success') {
+		                    this.stopScanCheck();
+		                    this.showAlert('登录成功！', 'success');
+		                    setTimeout(() => {
+		                        this.showPostSection();
+		                    }, 1000);
+		                } else if (data.status === 'error') {
+		                    this.stopScanCheck();
+		                    this.showAlert('登录失败: ' + data.message, 'error');
+		                    this.updateLoginStatus('登录失败，请刷新二维码重试');
+		                } else {
+		                    // 显示等待状态和剩余时间
+		                    const statusMsg = `${data.message || '等待扫码中...'} (${minutes}:${seconds.toString().padStart(2, '0')})`;
+		                    this.updateLoginStatus(statusMsg);
+		                }
+		            } catch (error) {
+		                if (error.message !== 'Token 无效') {
+		                    console.error('检查扫码状态失败:', error);
+		                }
+		            }
+		        }, 2000);
+		    }
+		
+		    stopScanCheck() {
+		        if (this.scanCheckInterval) {
+		            clearInterval(this.scanCheckInterval);
+		            this.scanCheckInterval = null;
+		        }
+		        this.scanStartTime = null;
+		    }
+		    async logout() {
+		        try {
+		            const response = await this.apiRequest('/api/logout', { method: 'POST' });
+		            const data = await response.json();
+		            
+		            if (data.success) {
+		                this.showAlert('退出登录成功', 'success');
+		                setTimeout(() => {
+		                    this.showLoginSection();
+		                    this.loadQRCode();
+		                }, 1000);
+		            }
+		        } catch (error) {
+		            if (error.message !== 'Token 无效') {
+		                this.showAlert('退出登录失败: ' + error.message, 'error');
+		            }
+		        }
+		    }
+		    async postWeibo() {
+		        const content = document.getElementById('contentInput').value.trim();
+		        
+		        if (!content) {
+		            this.showAlert('请输入微博内容', 'error');
+		            return;
+		        }
+		        if (content.length > 140) {
+		            this.showAlert('微博内容超过140字符限制', 'error');
+		            return;
+		        }
+		        const postBtn = document.getElementById('postBtn');
+		        const originalText = postBtn.textContent;
+		        postBtn.disabled = true;
+		        postBtn.innerHTML = '<span class="loading"></span>发送中...';
+		        try {
+		            const response = await this.apiRequest('/api/post', {
+		                method: 'POST',
+		                body: JSON.stringify({ content })
+		            });
+		            const data = await response.json();
+		            
+		            if (data.success) {
+		                this.showAlert('微博发送成功！', 'success');
+		                document.getElementById('contentInput').value = '';
+		                this.updateCharCount('');
+		            } else {
+		                throw new Error(data.error || '发送失败');
+		            }
+		        } catch (error) {
+		            if (error.message !== 'Token 无效') {
+		                this.showAlert('发送失败: ' + error.message, 'error');
+		            }
+		        } finally {
+		            postBtn.disabled = false;
+		            postBtn.textContent = originalText;
+		        }
+		    }
+		    updateCharCount(content) {
+		        const count = content.length;
+		        const charCountEl = document.getElementById('charCount');
+		        charCountEl.textContent = `${count}/140`;
+		        
+		        charCountEl.className = 'char-count';
+		        if (count > 120) {
+		            charCountEl.classList.add('warning');
+		        }
+		        if (count > 140) {
+		            charCountEl.classList.add('error');
+		        }
+		    }
+		    updateLoginStatus(message) {
+		        document.getElementById('loginStatus').textContent = message;
+		    }
+		    showAlert(message, type = 'info') {
+		        const alertContainer = document.getElementById('alertContainer');
+		        const alert = document.createElement('div');
+		        alert.className = `alert alert-${type}`;
+		        alert.textContent = message;
+		        
+		        alertContainer.innerHTML = '';
+		        alertContainer.appendChild(alert);
+		        
+		        if (type === 'success' || type === 'info') {
+		            setTimeout(() => {
+		                if (alert.parentNode) {
+		                    alert.remove();
+		                }
+		            }, 3000);
+		        }
+		    }
+		    clearAlerts() {
+		        document.getElementById('alertContainer').innerHTML = '';
+		    }
+		}
 
         // 初始化应用
         document.addEventListener('DOMContentLoaded', () => {
