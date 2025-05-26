@@ -26,22 +26,12 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
-// 改进的调试中间件 - 美观输出但不使用 JSON 格式化
+// 添加原始 body 解析，以便调试
 app.use('/api', (req, res, next) => {
-    console.log('📥 接收到 API 请求');
-    console.log('├── 请求方法:    ', req.method);
-    console.log('├── 请求路径:    ', req.path);
-    console.log('├── Content-Type:', req.get('Content-Type') || '无');
-
-    if (req.body && typeof req.body === 'object') {
-        console.log('└── 请求体参数:');
-        for (const [key, value] of Object.entries(req.body)) {
-            console.log(`    - ${key}: ${value}`);
-        }
-    } else {
-        console.log('└── 请求体: 无或非对象格式');
-    }
-
+    console.log('请求方法:', req.method);
+    console.log('请求路径:', req.path);
+    console.log('Content-Type:', req.get('Content-Type'));
+    console.log('请求体:', req.body);
     next();
 });
 
