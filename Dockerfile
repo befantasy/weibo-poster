@@ -1,24 +1,27 @@
-FROM node:18-slim
+# 使用Playwright官方镜像，包含预装的浏览器和依赖
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy
 
+# 设置工作目录
 WORKDIR /app
 
-# 复制package.json
+# 复制package.json和package-lock.json（如果存在）
 COPY package*.json ./
 
+# 设置npm镜像源（可选，用于加速安装）
+RUN npm config set registry https://registry.npmmirror.com
+
 # 安装Node.js依赖
-RUN npm install
-
-# 安装 Playwright 推荐的所有依赖
-RUN npx playwright install-deps
-
-# 安装Playwright浏览器
-RUN npx playwright install chromium
+RUN npm ci --only=production && npm cache clean --force
 
 # 复制源代码
 COPY . .
 
-# 创建数据目录
-RUN mkdir -p /app/data
+# 创建数据目录并设置权限
+RUN mkdir -p /app/data && \
+    chown -R pwuser:pwuser /app/data
+
+# 切换到非root用户（Playwright官方镜像提供的用户）
+USER pwuser
 
 # 暴露端口
 EXPOSE 3000
