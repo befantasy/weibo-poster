@@ -10,8 +10,8 @@ COPY package*.json ./
 # 设置npm镜像源（可选，用于加速安装）
 RUN npm config set registry https://registry.npmmirror.com
 
-# 安装Node.js依赖
-RUN npm ci --only=production && npm cache clean --force
+# 生成package-lock.json（如果不存在）并安装依赖
+RUN npm install --only=production && npm cache clean --force
 
 # 复制源代码
 COPY . .
