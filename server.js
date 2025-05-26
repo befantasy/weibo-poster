@@ -175,7 +175,7 @@ async function loadSession() {
 
 // 改进的登录状态检查，增加重试机制
 async function checkLoginStatus() {
-    const maxRetries = 3;
+    const maxRetries = 2; // 修改为2次
     let lastError;
     
     for (let i = 0; i < maxRetries; i++) {
@@ -230,7 +230,7 @@ async function checkLoginStatus() {
 
 // 改进的二维码获取
 async function getQRCode() {
-    const maxRetries = 3;
+    const maxRetries = 2; // 修改为2次
     let lastError;
     
     for (let i = 0; i < maxRetries; i++) {
@@ -315,7 +315,7 @@ async function checkScanStatus() {
 
 // 改进的发送微博功能
 async function postWeibo(content) {
-    const maxRetries = 3;
+    const maxRetries = 2; // 修改为2次
     let lastError;
     
     for (let i = 0; i < maxRetries; i++) {
