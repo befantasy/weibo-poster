@@ -30,5 +30,8 @@ USER pwuser
 # 暴露端口
 EXPOSE 3000
 
+# 设置内存限制环境变量
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
 # 启动应用
 CMD ["node", "server.js"]
