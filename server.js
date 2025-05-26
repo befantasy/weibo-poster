@@ -13,7 +13,7 @@ app.use(cors());
 
 // 修复后的JSON解析中间件
 app.use(express.json({
-    limit: '10mb',
+    limit: '1mb',
     // 移除 verify 函数，让 express.json() 自己处理解析
     // verify 函数会导致请求体被读取两次，可能引发问题
 }));
@@ -26,21 +26,22 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
-// 改进的调试中间件 - 避免敏感信息泄露
+// 改进的调试中间件 - 美观输出但不使用 JSON 格式化
 app.use('/api', (req, res, next) => {
-    console.log('请求方法:', req.method);
-    console.log('请求路径:', req.path);
-    console.log('Content-Type:', req.get('Content-Type'));
-    
-    // 只在开发环境下记录请求体，生产环境避免记录敏感信息
-    if (process.env.NODE_ENV !== 'production') {
-        console.log('请求体:', req.body);
-    } else {
-        // 生产环境只记录请求体的基本信息
-        if (req.body && typeof req.body === 'object') {
-            console.log('请求体字段:', Object.keys(req.body));
+    console.log('📥 接收到 API 请求');
+    console.log('├── 请求方法:    ', req.method);
+    console.log('├── 请求路径:    ', req.path);
+    console.log('├── Content-Type:', req.get('Content-Type') || '无');
+
+    if (req.body && typeof req.body === 'object') {
+        console.log('└── 请求体参数:');
+        for (const [key, value] of Object.entries(req.body)) {
+            console.log(`    - ${key}: ${value}`);
         }
+    } else {
+        console.log('└── 请求体: 无或非对象格式');
     }
+
     next();
 });
 
