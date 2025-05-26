@@ -30,7 +30,7 @@ app.use(cors());
 
 // 修复后的JSON解析中间件
 app.use(express.json({
-    limit: '1mb',
+    limit: '50kb',
     // 移除 verify 函数，让 express.json() 自己处理解析
     // verify 函数会导致请求体被读取两次，可能引发问题
 }));
@@ -108,7 +108,15 @@ async function initBrowser() {
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
-                    '--memory-pressure-off'
+                    '--memory-pressure-off',
+                    // 新增优化参数
+                    '--max_old_space_size=256',
+                    '--disable-background-networking',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-features=Translate,BackForwardCache,AcceptCHFrame',
+                    '--disable-hang-monitor',
+                    '--disable-prompt-on-repost',
+                    '--disable-domain-reliability'
                 ]
             });
         }
