@@ -26,6 +26,24 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
+// 改进的调试中间件 - 避免敏感信息泄露
+app.use('/api', (req, res, next) => {
+    console.log('请求方法:', req.method);
+    console.log('请求路径:', req.path);
+    console.log('Content-Type:', req.get('Content-Type'));
+    
+    // 只在开发环境下记录请求体，生产环境避免记录敏感信息
+    if (process.env.NODE_ENV !== 'production') {
+        console.log('请求体:', req.body);
+    } else {
+        // 生产环境只记录请求体的基本信息
+        if (req.body && typeof req.body === 'object') {
+            console.log('请求体字段:', Object.keys(req.body));
+        }
+    }
+    next();
+});
+
 app.use(express.static('public'));
 
 // 鉴权中间件
