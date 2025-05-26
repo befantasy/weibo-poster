@@ -6,7 +6,10 @@ yarn-error.log*
 
 # 数据目录
 data/
+# 保留package.json和package-lock.json，但排除其他json文件
 *.json
+!package.json
+!package-lock.json
 
 # Git
 .git
