@@ -113,7 +113,7 @@ async function initBrowser() {
                     '--max_old_space_size=384',
                     '--disable-background-networking',
                     '--disable-ipc-flooding-protection',
-                    '--disable-features=Translate,BackForwardCache,AcceptCHFrame',
+                    '--disable-features=Translate,BackForwardCache,AcceptCHFrame,VizDisplayCompositor',
                     '--disable-hang-monitor',
                     '--disable-prompt-on-repost',
                     '--disable-domain-reliability'
