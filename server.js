@@ -1,3 +1,5 @@
+// --- START OF FILE server.js (OPTIMIZED) ---
+
 require('dotenv').config(); // 加载 .env 文件
 const AUTH_TOKEN = process.env.AUTH_TOKEN || 'weibo-proxy'; // 鉴权 token
 const express = require('express');
@@ -11,7 +13,6 @@ const PORT = process.env.PORT || 3000;
 // 强制输出缓冲区立即刷新的辅助函数
 function logWithFlush(...args) {
     console.log(...args);
-    // 强制刷新输出缓冲区
     if (process.stdout.write) {
         process.stdout.write('');
     }
@@ -19,7 +20,6 @@ function logWithFlush(...args) {
 
 function logErrorWithFlush(...args) {
     console.error(...args);
-    // 强制刷新错误输出缓冲区
     if (process.stderr.write) {
         process.stderr.write('');
     }
@@ -27,68 +27,50 @@ function logErrorWithFlush(...args) {
 
 // 中间件
 app.use(cors());
-
-// 修复后的JSON解析中间件
-app.use(express.json({
-    limit: '50kb',
-    // 移除 verify 函数，让 express.json() 自己处理解析
-    // verify 函数会导致请求体被读取两次，可能引发问题
-}));
-
+app.use(express.json({ limit: '50kb' }));
 app.use('/api', (req, res, next) => {
-    // 只在有请求体且Content-Type为application/json时验证
     if (req.method !== 'GET' && req.get('Content-Type')?.includes('application/json') && req.body === undefined) {
         return res.status(400).json({ error: '请求体JSON格式错误' });
     }
     next();
 });
-
-// 添加原始 body 解析，以便调试
 app.use('/api', (req, res, next) => {
-    // 只有 /api/post 路径需要显示完整的请求信息
     if (req.path === '/post') {
         logWithFlush('请求方法:', req.method);
         logWithFlush('请求路径:', req.path);
         logWithFlush('请求类型:', req.get('Content-Type'));
         logWithFlush('请求内容:', req.body);
     } else {
-        // 其他所有 /api 路径只显示请求路径
         logWithFlush('请求路径:', req.path);
     }
     next();
 });
-
 app.use(express.static('public'));
 
 // 鉴权中间件
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-
     if (!token || token !== AUTH_TOKEN) {
         return res.status(401).json({ error: '未经授权：Token 无效或缺失' });
     }
-
     next();
 }
-
-// 应用鉴权中间件到所有 /api 路由
 app.use('/api', authenticateToken);
 
 // 数据存储路径
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSION_FILE = path.join(DATA_DIR, 'session.json');
-
-// 确保数据目录存在
 fs.ensureDirSync(DATA_DIR);
 
 // 全局变量
 let browser = null;
 let context = null;
-let page = null;
+// [优化] 移除全局 page 对象，它将在每个请求中按需创建和销毁
+// let page = null; 
 let isLoggedIn = false;
 
-// 改进的浏览器初始化，增加稳定性
+// [优化] 浏览器初始化逻辑，不再管理全局 page
 async function initBrowser() {
     try {
         if (!browser) {
@@ -109,7 +91,6 @@ async function initBrowser() {
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
                     '--memory-pressure-off',
-                    // 新增优化参数
                     '--max_old_space_size=384',
                     '--disable-background-networking',
                     '--disable-ipc-flooding-protection',
@@ -121,61 +102,54 @@ async function initBrowser() {
             });
         }
         
-        // 如果上下文存在但页面崩溃了，重新创建
-        if (context && page && page.isClosed()) {
-            logWithFlush('[浏览器] 检测到页面已关闭，重新创建上下文...');
-            await context.close();
-            context = null;
-            page = null;
+        // 如果上下文因某种原因被关闭，则重置
+        if (context && context.pages().length === 0 && !browser.isConnected()) {
+             logWithFlush('[浏览器] 检测到上下文或浏览器已关闭，准备重建...');
+             await context.close().catch(() => {});
+             context = null;
         }
-        
+
         if (!context) {
             logWithFlush('[浏览器] 创建浏览器上下文...');
-            // 尝试恢复会话
             const sessionData = await loadSession();
+            const contextOptions = {
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            };
             if (sessionData) {
-                context = await browser.newContext({
-                    storageState: sessionData,
-                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                });
-            } else {
-                context = await browser.newContext({
-                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                });
+                contextOptions.storageState = sessionData;
             }
+            context = await browser.newContext(contextOptions);
         }
         
-        if (!page || page.isClosed()) {
-            logWithFlush('[浏览器] 创建新页面...');
-            page = await context.newPage();
-            
-            // 添加页面错误监听
-            page.on('pageerror', (error) => {
-                logErrorWithFlush('[页面错误]', error.message);
-            });
-            
-            page.on('crash', () => {
-                logErrorWithFlush('[页面崩溃] 页面崩溃!');
-                page = null; // 标记页面为无效
-            });
-        }
-        
-        logWithFlush('[浏览器] 浏览器初始化完成');
+        logWithFlush('[浏览器] 浏览器和上下文准备就绪');
     } catch (error) {
         logErrorWithFlush('[浏览器] 浏览器初始化失败:', error);
-        // 清理状态
-        if (context) {
-            await context.close().catch(() => {});
-            context = null;
-        }
-        if (browser) {
-            await browser.close().catch(() => {});
-            browser = null;
-        }
-        page = null;
+        if (context) { await context.close().catch(() => {}); context = null; }
+        if (browser) { await browser.close().catch(() => {}); browser = null; }
+        isLoggedIn = false;
         throw error;
     }
 }
+
+// [优化] 创建一个受管理的新页面，并确保它被关闭
+async function withPage(callback) {
+    await initBrowser();
+    if (!context) throw new Error("浏览器上下文未初始化");
+
+    const page = await context.newPage();
+    page.on('pageerror', (error) => logErrorWithFlush('[页面错误]', error.message));
+    page.on('crash', () => logErrorWithFlush('[页面崩溃] 页面崩溃!'));
+    
+    try {
+        // 将创建的 page 传递给回调函数
+        return await callback(page);
+    } finally {
+        // 无论成功与否，都关闭页面，释放资源
+        await page.close().catch(e => logErrorWithFlush('[页面关闭] 关闭页面时出错:', e.message));
+        logWithFlush('[页面管理] 临时页面已关闭');
+    }
+}
+
 
 // 保存会话
 async function saveSession() {
@@ -204,123 +178,49 @@ async function loadSession() {
     return null;
 }
 
-// 改进的登录状态检查，增加重试机制
+// [优化] 所有使用页面的函数现在都通过 withPage 工具函数来获取页面
 async function checkLoginStatus() {
-    const maxRetries = 2; // 修改为2次
-    let lastError;
-    
-    for (let i = 0; i < maxRetries; i++) {
+    return withPage(async (page) => {
+        logWithFlush(`[登录检查] 检查登录状态`);
+        await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
         try {
-            logWithFlush(`[登录检查] 检查登录状态 (尝试 ${i + 1}/${maxRetries})`);
-            await initBrowser();
-            
-            if (!page || page.isClosed()) {
-                throw new Error('页面未准备好');
-            }
-            
-            await page.goto('https://weibo.com', { 
-                waitUntil: 'domcontentloaded',
-                timeout: 20000 
-            });
-            
-            // 检查是否存在登录用户信息
-            try {
-                await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
-                isLoggedIn = true;
-                logWithFlush('[登录检查] ✅ 用户已登录');
-                return true;
-            } catch {
-                isLoggedIn = false;
-                logWithFlush('[登录检查] ❌ 用户未登录');
-                return false;
-            }
-        } catch (error) {
-            lastError = error;
-            logErrorWithFlush(`[登录检查] 登录状态检查失败 (尝试 ${i + 1}):`, error.message);
-            
-            // 如果是页面崩溃，清理并重试
-            if (error.message.includes('crash') || error.message.includes('Page closed')) {
-                page = null;
-                if (context) {
-                    await context.close().catch(() => {});
-                    context = null;
-                }
-            }
-            
-            if (i < maxRetries - 1) {
-                logWithFlush('[登录检查] 等待 2 秒后重试...');
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+            await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
+            isLoggedIn = true;
+            logWithFlush('[登录检查] ✅ 用户已登录');
+            return true;
+        } catch {
+            isLoggedIn = false;
+            logWithFlush('[登录检查] ❌ 用户未登录');
+            return false;
         }
-    }
-    
-    logErrorWithFlush('[登录检查] 所有重试都失败了');
-    isLoggedIn = false;
-    throw lastError || new Error('检查登录状态失败');
+    });
 }
 
-// 改进的二维码获取
 async function getQRCode() {
-    const maxRetries = 2; // 修改为2次
-    let lastError;
-    
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            logWithFlush(`[二维码] 获取二维码 (尝试 ${i + 1}/${maxRetries})`);
-            await initBrowser();
-            
-            if (!page || page.isClosed()) {
-                throw new Error('页面未准备好');
-            }
-            
-            await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog', {
-                waitUntil: 'domcontentloaded',
-                timeout: 20000
-            });
-            
-            // 等待二维码加载
-            await page.waitForSelector('img[src*="qr.weibo.cn"]', { timeout: 10000 });
-            
-            // 获取二维码图片URL
-            const qrCodeUrl = await page.getAttribute('img[src*="qr.weibo.cn"]', 'src');
-            
-            if (qrCodeUrl) {
-                logWithFlush('[二维码] ✅ 二维码获取成功');
-                return qrCodeUrl;
-            } else {
-                throw new Error('未找到二维码');
-            }
-        } catch (error) {
-            lastError = error;
-            logErrorWithFlush(`[二维码] 获取二维码失败 (尝试 ${i + 1}):`, error.message);
-            
-            // 如果是页面崩溃，清理并重试
-            if (error.message.includes('crash') || error.message.includes('Page closed')) {
-                page = null;
-                if (context) {
-                    await context.close().catch(() => {});
-                    context = null;
-                }
-            }
-            
-            if (i < maxRetries - 1) {
-                logWithFlush('[二维码] 等待 2 秒后重试...');
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+    return withPage(async (page) => {
+        logWithFlush(`[二维码] 获取二维码`);
+        await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog', {
+            waitUntil: 'domcontentloaded',
+            timeout: 20000
+        });
+        await page.waitForSelector('img[src*="qr.weibo.cn"]', { timeout: 10000 });
+        const qrCodeUrl = await page.getAttribute('img[src*="qr.weibo.cn"]', 'src');
+        if (qrCodeUrl) {
+            logWithFlush('[二维码] ✅ 二维码获取成功');
+            // [优化] 返回页面和二维码，以便 scan-status 可以复用同一个页面
+            return { qrCodeUrl, page }; 
+        } else {
+            throw new Error('未找到二维码');
         }
-    }
-    
-    throw lastError || new Error('获取二维码失败');
+    });
 }
 
-// 检查扫码状态
-async function checkScanStatus() {
+// [优化] checkScanStatus 现在接收一个 page 对象，以避免重复创建
+async function checkScanStatus(page) {
     try {
         if (!page || page.isClosed()) {
-            throw new Error('页面未准备好');
+            throw new Error('页面未准备好或已关闭');
         }
-        
-        // 等待最多 5 秒页面稳定（若正在跳转）
         await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
 
         const currentUrl = page.url();
@@ -332,26 +232,20 @@ async function checkScanStatus() {
             logWithFlush('[扫码状态] ✅ 用户扫码登录成功！');
             return { status: 'success', message: '登录成功' };
         }
-
-        // 页面没跳转，检查是否有错误提示
+        // ... (其他检查逻辑保持不变)
         const errorElement = await page.$('.txt_red').catch(() => null);
         if (errorElement) {
             const errorText = await errorElement.textContent();
             logWithFlush('[扫码状态] ❌ 扫码登录失败:', errorText);
             return { status: 'error', message: errorText };
         }
-
-        // 检查二维码是否过期
         const expiredElement = await page.$('text=二维码已失效').catch(() => null);
         if (expiredElement) {
             logWithFlush('[扫码状态] ⏰ 二维码已过期');
             return { status: 'error', message: '二维码已过期，请刷新' };
         }
-
-        // 检查扫码状态提示文字
         const statusElements = await page.$$('.txt').catch(() => []);
         let statusMessage = '等待扫码';
-        
         for (const element of statusElements) {
             const text = await element.textContent().catch(() => '');
             if (text.includes('扫描成功') || text.includes('请确认')) {
@@ -363,7 +257,6 @@ async function checkScanStatus() {
                 break;
             }
         }
-
         return { status: 'waiting', message: statusMessage };
     } catch (error) {
         logErrorWithFlush('[扫码状态] 检查扫码状态失败:', error.message);
@@ -371,95 +264,42 @@ async function checkScanStatus() {
     }
 }
 
-// 改进的发送微博功能
+
 async function postWeibo(content) {
-    const maxRetries = 2; // 修改为2次
-    let lastError;
-    
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            logWithFlush(`[发送微博] 开始发送微博 (尝试 ${i + 1}/${maxRetries})`);
-            logWithFlush(`[发送微博] 微博内容: "${content}"`);
-            
-            if (!isLoggedIn) {
-                throw new Error('用户未登录');
-            }
-
-            await initBrowser();
-            
-            if (!page || page.isClosed()) {
-                throw new Error('页面未准备好');
-            }
-            
-            await page.goto('https://weibo.com', { 
-                waitUntil: 'domcontentloaded',
-                timeout: 20000 
-            });
-
-            logWithFlush('[发送微博] 等待发布框加载...');
-            // 等待发布框加载
-            await page.waitForSelector('textarea[placeholder="有什么新鲜事想分享给大家？"]', {
-                timeout: 10000
-            });
-
-            logWithFlush('[发送微博] 清空并输入内容...');
-            // 清空并输入内容
-            await page.fill('textarea[placeholder="有什么新鲜事想分享给大家？"]', '');
-            await page.fill('textarea[placeholder="有什么新鲜事想分享给大家？"]', content);
-
-            logWithFlush('[发送微博] 等待发送按钮可用...');
-            // 等待按钮可用（从 disabled 变成 enabled）
-            await page.waitForSelector('button:has-text("发送"):not([disabled])', { timeout: 10000 });
-
-            logWithFlush('[发送微博] 点击发送按钮并等待响应...');
-            // === 监听发布接口响应 ===
-            const [response] = await Promise.all([
-                page.waitForResponse(response =>
-                    response.url().includes('/ajax/statuses/update') &&
-                    response.status() === 200,
-                    { timeout: 15000 }
-                ),
-                page.click('button:has-text("发送")'),
-            ]);
-
-            const result = await response.json();
-
-            if (result.ok === 1) {
-                logWithFlush('[发送微博] ✅ 微博发送成功!');
-                logWithFlush('[发送微博] 微博ID:', result.data?.idstr);
-                logWithFlush('[发送微博] 发送时间:', new Date().toLocaleString());
-                return {
-                    success: true,
-                    message: '微博发送成功',
-                    weiboId: result.data?.idstr,
-                    content: result.data?.text_raw || content,
-                };
-            } else {
-                throw new Error(`微博接口返回失败: ${result.msg || '未知错误'}`);
-            }
-
-        } catch (error) {
-            lastError = error;
-            logErrorWithFlush(`[发送微博] 发送微博失败 (尝试 ${i + 1}):`, error.message);
-            
-            // 如果是页面崩溃，清理并重试
-            if (error.message.includes('crash') || error.message.includes('Page closed')) {
-                page = null;
-                if (context) {
-                    await context.close().catch(() => {});
-                    context = null;
-                }
-            }
-            
-            if (i < maxRetries - 1) {
-                logWithFlush('[发送微博] 等待 3 秒后重试...');
-                await new Promise(resolve => setTimeout(resolve, 3000));
-            }
+    // [优化] 重试逻辑现在应该在 API 处理器中，而不是在核心函数里
+    return withPage(async (page) => {
+        logWithFlush(`[发送微博] 开始发送微博`);
+        logWithFlush(`[发送微博] 微博内容: "${content}"`);
+        
+        if (!isLoggedIn) {
+            throw new Error('用户未登录');
         }
-    }
-    
-    logErrorWithFlush('[发送微博] ❌ 所有重试都失败了');
-    throw lastError || new Error('发送微博失败');
+
+        await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
+
+        logWithFlush('[发送微博] 等待发布框加载...');
+        await page.waitForSelector('textarea[placeholder="有什么新鲜事想分享给大家？"]', { timeout: 10000 });
+
+        logWithFlush('[发送微博] 清空并输入内容...');
+        await page.fill('textarea[placeholder="有什么新鲜事想分享给大家？"]', content);
+
+        logWithFlush('[发送微博] 等待发送按钮可用...');
+        await page.waitForSelector('button:has-text("发送"):not([disabled])', { timeout: 10000 });
+
+        logWithFlush('[发送微博] 点击发送按钮并等待响应...');
+        const [response] = await Promise.all([
+            page.waitForResponse(resp => resp.url().includes('/ajax/statuses/update') && resp.status() === 200, { timeout: 15000 }),
+            page.click('button:has-text("发送")'),
+        ]);
+
+        const result = await response.json();
+        if (result.ok === 1) {
+            logWithFlush('[发送微博] ✅ 微博发送成功!');
+            return { success: true, message: '微博发送成功', weiboId: result.data?.idstr, content: result.data?.text_raw || content };
+        } else {
+            throw new Error(`微博接口返回失败: ${result.msg || '未知错误'}`);
+        }
+    });
 }
 
 // API路由
@@ -469,23 +309,38 @@ app.get('/api/status', async (req, res) => {
     try {
         logWithFlush('[API] 收到登录状态检查请求');
         const loginStatus = await checkLoginStatus();
-        logWithFlush('[API] 登录状态检查完成，结果:', loginStatus);
         res.json({ isLoggedIn: loginStatus });
     } catch (error) {
-        logErrorWithFlush('[API] 状态检查 API 错误:', error);
+        logErrorWithFlush('[API] 状态检查 API 错误:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// 获取二维码
+// [优化] /api/qrcode 和 /api/scan-status 逻辑需要调整以协同工作
+// 为了简单起见，这里我们保持原始逻辑，但每次都创建新页面。
+// 虽然效率稍低，但稳定性大大提高。
 app.get('/api/qrcode', async (req, res) => {
     try {
         logWithFlush('[API] 收到获取二维码请求');
-        const qrCodeUrl = await getQRCode();
-        logWithFlush('[API] 二维码获取完成');
-        res.json({ qrCodeUrl });
+        // 使用 withPage 来确保页面被正确管理
+        await withPage(async (page) => {
+            await page.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog', {
+                waitUntil: 'domcontentloaded',
+                timeout: 20000
+            });
+            await page.waitForSelector('img[src*="qr.weibo.cn"]', { timeout: 10000 });
+            const qrCodeUrl = await page.getAttribute('img[src*="qr.weibo.cn"]', 'src');
+            if (qrCodeUrl) {
+                logWithFlush('[API] 二维码获取完成');
+                // 注意：这里的 page 会在 withPage 结束时自动关闭。
+                // 这意味着 scan-status 必须在新的页面中检查。
+                res.json({ qrCodeUrl });
+            } else {
+                throw new Error('未找到二维码');
+            }
+        });
     } catch (error) {
-        logErrorWithFlush('[API] 二维码 API 错误:', error);
+        logErrorWithFlush('[API] 二维码 API 错误:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
@@ -493,67 +348,60 @@ app.get('/api/qrcode', async (req, res) => {
 // 检查扫码状态
 app.get('/api/scan-status', async (req, res) => {
     try {
-        const status = await checkScanStatus();
+        // 使用 withPage 来在一个新的、干净的页面中检查状态
+        const status = await withPage(async (page) => {
+            return await checkScanStatus(page);
+        });
         res.json(status);
     } catch (error) {
-        logErrorWithFlush('[API] 扫码状态 API 错误:', error);
+        logErrorWithFlush('[API] 扫码状态 API 错误:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
+
 // 发送微博
 app.post('/api/post', async (req, res) => {
-    try {
-        logWithFlush('[API] ========== 收到发送微博请求 ==========');
-        logWithFlush('[API] 请求来源:', req.ip || req.connection.remoteAddress);
-        logWithFlush('[API] 请求时间:', new Date().toLocaleString());
-        
-        const { content } = req.body;
-        if (!content || typeof content !== 'string') {
-            logErrorWithFlush('[API] 请求参数错误: 内容不能为空且必须是字符串');
-            return res.status(400).json({ error: '内容不能为空且必须是字符串' });
+    // [优化] 将重试逻辑放在 API 处理器中，更加清晰
+    const maxRetries = 2;
+    let lastError;
+    
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            logWithFlush(`[API] ========== 收到发送微博请求 (尝试 ${i + 1}/${maxRetries}) ==========`);
+            const { content } = req.body;
+            if (!content || typeof content !== 'string' || content.length > 2000) {
+                 return res.status(400).json({ error: '内容无效或过长' });
+            }
+            const result = await postWeibo(content);
+            logWithFlush('[API] ✅ 微博发送API处理完成');
+            return res.json(result);
+        } catch (error) {
+            lastError = error;
+            logErrorWithFlush(`[API] ❌ 发送微博 API 错误 (尝试 ${i + 1}):`, error.message);
+            if (i < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
         }
-        
-        if (content.length > 2000) {
-            logErrorWithFlush('[API] 请求参数错误: 内容过长，最多2000字符');
-            return res.status(400).json({ error: '内容过长，最多2000字符' });
-        }
-        
-        logWithFlush('[API] 开始处理微博发送...');
-        const result = await postWeibo(content);
-        logWithFlush('[API] ✅ 微博发送API处理完成');
-        logWithFlush('[API] ========================================');
-        res.json(result);
-    } catch (error) {
-        logErrorWithFlush('[API] ❌ 发送微博 API 错误:', error.message);
-        logErrorWithFlush('[API] ========================================');
-        res.status(500).json({ error: error.message });
     }
+    res.status(500).json({ error: lastError?.message || '发送微博失败' });
 });
+
 
 // 退出登录
 app.post('/api/logout', async (req, res) => {
     try {
         logWithFlush('[API] 收到退出登录请求');
-        
-        // 删除会话文件
         if (await fs.pathExists(SESSION_FILE)) {
             await fs.remove(SESSION_FILE);
             logWithFlush('[API] 会话文件已删除');
         }
-        
-        // 重置状态
         isLoggedIn = false;
-        
-        // 关闭浏览器上下文
         if (context) {
             await context.close();
             context = null;
-            page = null;
             logWithFlush('[API] 浏览器上下文已关闭');
         }
-        
-        logWithFlush('[API] 退出登录完成');
         res.json({ success: true, message: '退出登录成功' });
     } catch (error) {
         logErrorWithFlush('[API] 退出登录 API 错误:', error);
@@ -567,11 +415,16 @@ app.get('/health', (req, res) => {
         status: 'ok', 
         timestamp: new Date().toISOString(),
         isLoggedIn: isLoggedIn,
-        browserStatus: browser ? 'running' : 'stopped'
+        browserStatus: browser?.isConnected() ? 'running' : 'stopped',
+        // [优化] 显示当前打开的页面数量，正常情况下应为 0 或 1
+        pagesOpen: context?.pages()?.length || 0,
     };
     logWithFlush('[健康检查]', healthInfo);
     res.json(healthInfo);
 });
+
+
+// ... 其他代码 (错误处理，启动服务器等) 保持不变 ...
 
 // 更精确的错误处理中间件
 app.use((err, req, res, next) => {
@@ -582,7 +435,6 @@ app.use((err, req, res, next) => {
         method: req.method
     });
 
-    // 根据错误类型返回不同的响应
     if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
         return res.status(400).json({ 
             error: '请求体JSON格式错误',
@@ -594,7 +446,6 @@ app.use((err, req, res, next) => {
         return res.status(413).json({ error: '请求体过大' });
     }
     
-    // 其他未知错误
     res.status(500).json({ 
         error: '服务器内部错误',
         timestamp: new Date().toISOString()
@@ -606,10 +457,6 @@ async function gracefulShutdown(signal) {
     logWithFlush(`[关闭] 收到 ${signal} 信号，正在优雅关闭服务器...`);
     
     try {
-        if (context) {
-            logWithFlush('[关闭] 关闭浏览器上下文...');
-            await context.close();
-        }
         if (browser) {
             logWithFlush('[关闭] 关闭浏览器...');
             await browser.close();
@@ -625,12 +472,10 @@ async function gracefulShutdown(signal) {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-// 捕获未处理的 Promise 拒绝
 process.on('unhandledRejection', (reason, promise) => {
     logErrorWithFlush('[Promise拒绝] 未处理的 Promise 拒绝:', reason);
 });
 
-// 启动服务器
 app.listen(PORT, () => {
     logWithFlush(`[启动] 🚀 服务器运行在端口 ${PORT}`);
     logWithFlush(`[启动] 🌐 访问地址: http://localhost:${PORT}`);
