@@ -75,15 +75,35 @@ fs.ensureDirSync(DATA_DIR);
 // 全局变量
 let browser = null;
 let context = null;
-// CHANGE: 移除了全局 page 变量，改用一个专门的 loginPage 变量来处理扫码登录流程
-// 这样可以避免一个持久化的页面长时间占用内存
 let loginPage = null;
 let isLoggedIn = false;
+let lastSessionCheckTime = 0; // 添加会话检查时间戳
+
+// 检查浏览器上下文是否有效
+async function isContextValid() {
+    if (!context) return false;
+    
+    try {
+        // 检查上下文是否已关闭
+        if (context._closed) return false;
+        
+        // 尝试获取页面列表
+        const pages = context.pages();
+        return true; // 如果能获取到页面列表，说明上下文是有效的
+    } catch (error) {
+        logWithFlush('[上下文检查] 上下文无效:', error.message);
+        return false;
+    }
+}
 
 // 改进的浏览器初始化，增加稳定性
 async function initBrowser() {
     try {
-        if (!browser) {
+        // 启动浏览器
+        if (!browser || !browser.isConnected()) {
+            if (browser) {
+                await browser.close().catch(() => {});
+            }
             logWithFlush('[浏览器] 启动浏览器...');
             browser = await chromium.launch({
                 headless: true,
@@ -101,26 +121,29 @@ async function initBrowser() {
             });
         }
         
-        // CHANGE: 检查上下文是否有效，不再检查全局页面
-        if (context && (!browser.isConnected() || (context.pages().length === 0 && !loginPage))) {
-            logWithFlush('[浏览器] 检测到上下文可能无效，重新创建...');
-            await context.close().catch(() => {});
-            context = null;
-        }
-        
-        if (!context) {
-            logWithFlush('[浏览器] 创建浏览器上下文...');
+        // 检查并创建上下文
+        const contextValid = await isContextValid();
+        if (!contextValid) {
+            if (context) {
+                logWithFlush('[浏览器] 关闭旧的上下文...');
+                await context.close().catch(() => {});
+            }
+            
+            logWithFlush('[浏览器] 创建新的浏览器上下文...');
             const sessionData = await loadSession();
             const contextOptions = {
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             };
             if (sessionData) {
                 contextOptions.storageState = sessionData;
+                logWithFlush('[浏览器] 使用已保存的会话数据');
             }
             context = await browser.newContext(contextOptions);
+            
+            // 重置登录页面
+            loginPage = null;
         }
         
-        // CHANGE: 移除所有创建全局 page 的逻辑，页面将在需要时按需创建
         logWithFlush('[浏览器] 浏览器和上下文初始化完成');
     } catch (error) {
         logErrorWithFlush('[浏览器] 浏览器初始化失败:', error);
@@ -128,14 +151,14 @@ async function initBrowser() {
         if (browser) await browser.close().catch(() => {});
         context = null;
         browser = null;
-        loginPage = null; // CHANGE: 同时清理登录页面
+        loginPage = null;
         throw error;
     }
 }
 
 // 保存会话
 async function saveSession() {
-    if (context) {
+    if (context && await isContextValid()) {
         try {
             const sessionData = await context.storageState();
             await fs.writeJson(SESSION_FILE, sessionData);
@@ -160,19 +183,24 @@ async function loadSession() {
     return null;
 }
 
-// 改进的登录状态检查，增加重试机制
+// 优化的登录状态检查
 async function checkLoginStatus() {
     const maxRetries = 2;
     let lastError;
+    const now = Date.now();
+    
+    // 如果最近5秒内已经检查过且状态为已登录，直接返回
+    if (isLoggedIn && (now - lastSessionCheckTime) < 5000) {
+        logWithFlush('[登录检查] 使用缓存的登录状态: 已登录');
+        return true;
+    }
     
     for (let i = 0; i < maxRetries; i++) {
-        // CHANGE: 页面现在是函数内的局部变量
         let page = null;
         try {
             logWithFlush(`[登录检查] 检查登录状态 (尝试 ${i + 1}/${maxRetries})`);
             await initBrowser();
             
-            // CHANGE: 按需创建页面
             page = await context.newPage();
             
             await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -180,10 +208,12 @@ async function checkLoginStatus() {
             try {
                 await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
                 isLoggedIn = true;
+                lastSessionCheckTime = now;
                 logWithFlush('[登录检查] ✅ 用户已登录');
                 return true;
             } catch {
                 isLoggedIn = false;
+                lastSessionCheckTime = now;
                 logWithFlush('[登录检查] ❌ 用户未登录');
                 return false;
             }
@@ -195,7 +225,6 @@ async function checkLoginStatus() {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
         } finally {
-            // CHANGE: 无论成功或失败，都关闭本次创建的页面以释放内存
             if (page) {
                 await page.close().catch(e => logErrorWithFlush('[登录检查] 关闭页面失败:', e.message));
             }
@@ -204,6 +233,7 @@ async function checkLoginStatus() {
     
     logErrorWithFlush('[登录检查] 所有重试都失败了');
     isLoggedIn = false;
+    lastSessionCheckTime = now;
     throw lastError || new Error('检查登录状态失败');
 }
 
@@ -217,12 +247,11 @@ async function getQRCode() {
             logWithFlush(`[二维码] 获取二维码 (尝试 ${i + 1}/${maxRetries})`);
             await initBrowser();
             
-            // CHANGE: 如果之前有未关闭的登录页，先关掉，防止资源泄露
+            // 如果之前有未关闭的登录页，先关掉，防止资源泄露
             if (loginPage && !loginPage.isClosed()) {
                 await loginPage.close();
             }
             
-            // CHANGE: 创建页面并赋值给专门的 loginPage 变量
             loginPage = await context.newPage();
             
             await loginPage.goto('https://passport.weibo.com/sso/signin?entry=miniblog&source=miniblog', {
@@ -254,7 +283,6 @@ async function getQRCode() {
 // 检查扫码状态
 async function checkScanStatus() {
     try {
-        // CHANGE: 检查 loginPage 而不是全局 page
         if (!loginPage || loginPage.isClosed()) {
             return { status: 'error', message: '登录页面已关闭，请刷新二维码' };
         }
@@ -265,9 +293,9 @@ async function checkScanStatus() {
         
         if (currentUrl.includes('weibo.com') && !currentUrl.includes('passport')) {
             isLoggedIn = true;
+            lastSessionCheckTime = Date.now();
             await saveSession();
             logWithFlush('[扫码状态] ✅ 用户扫码登录成功！');
-            // CHANGE: 登录成功后，立即关闭页面释放资源
             await loginPage.close();
             loginPage = null;
             return { status: 'success', message: '登录成功' };
@@ -283,7 +311,6 @@ async function checkScanStatus() {
         const expiredElement = await loginPage.$('text=二维码已失效').catch(() => null);
         if (expiredElement) {
             logWithFlush('[扫码状态] ⏰ 二维码已过期');
-            // CHANGE: 二维码过期后，关闭页面释放资源
             await loginPage.close();
             loginPage = null;
             return { status: 'error', message: '二维码已过期，请刷新' };
@@ -305,7 +332,6 @@ async function checkScanStatus() {
         return { status: 'waiting', message: statusMessage };
     } catch (error) {
         logErrorWithFlush('[扫码状态] 检查扫码状态失败:', error.message);
-        // CHANGE: 出现任何错误都尝试关闭页面
         if (loginPage && !loginPage.isClosed()) {
             await loginPage.close();
             loginPage = null;
@@ -320,16 +346,22 @@ async function postWeibo(content) {
     let lastError;
     
     for (let i = 0; i < maxRetries; i++) {
-        // CHANGE: 页面现在是函数内的局部变量
         let page = null;
         try {
             logWithFlush(`[发送微博] 开始发送微博 (尝试 ${i + 1}/${maxRetries})`);
             logWithFlush(`[发送微博] 微博内容: "${content}"`);
             
-            if (!isLoggedIn) throw new Error('用户未登录');
+            if (!isLoggedIn) {
+                // 如果状态显示未登录，先检查一下实际登录状态
+                logWithFlush('[发送微博] 状态显示未登录，重新检查登录状态...');
+                const loginStatus = await checkLoginStatus();
+                if (!loginStatus) {
+                    throw new Error('用户未登录');
+                }
+            }
+            
             await initBrowser();
             
-            // CHANGE: 按需创建页面
             page = await context.newPage();
             
             await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -369,7 +401,6 @@ async function postWeibo(content) {
                 await new Promise(resolve => setTimeout(resolve, 3000));
             }
         } finally {
-            // CHANGE: 无论成功或失败，都关闭本次创建的页面以释放内存
             if (page) {
                 await page.close().catch(e => logErrorWithFlush('[发送微博] 关闭页面失败:', e.message));
                 logWithFlush('[发送微博] 页面已关闭，资源已释放');
@@ -442,8 +473,9 @@ app.post('/api/logout', async (req, res) => {
             logWithFlush('[API] 会话文件已删除');
         }
         isLoggedIn = false;
+        lastSessionCheckTime = 0;
         
-        // CHANGE: 确保关闭可能存在的登录页面
+        // 确保关闭可能存在的登录页面
         if (loginPage && !loginPage.isClosed()) {
             await loginPage.close();
             loginPage = null;
