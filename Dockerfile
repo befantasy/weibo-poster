@@ -1,5 +1,5 @@
 # 使用Playwright官方镜像，包含预装的浏览器和依赖
-FROM mcr.microsoft.com/playwright:v1.53.0-jammy
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy
 
 # 设置工作目录
 WORKDIR /app

@@ -102,7 +102,7 @@ async function initBrowser() {
         }
         
         // CHANGE: 检查上下文是否有效，不再检查全局页面
-        if (context && (!browser.isConnected() || (context.pages().length === 0 && !loginPage))) {
+        if (context && !browser.isConnected()) {
             logWithFlush('[浏览器] 检测到上下文可能无效，重新创建...');
             await context.close().catch(() => {});
             context = null;
@@ -178,7 +178,7 @@ async function checkLoginStatus() {
             await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
             
             try {
-                await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
+                await page.waitForSelector('textarea[placeholder="有什么新鲜事想分享给大家？"]', { timeout: 10000 });
                 isLoggedIn = true;
                 logWithFlush('[登录检查] ✅ 用户已登录');
                 return true;
