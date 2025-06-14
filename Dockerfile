@@ -1,5 +1,5 @@
 # 使用Playwright官方镜像，包含预装的浏览器和依赖
-FROM mcr.microsoft.com/playwright:v1.52.0-jammy
+FROM mcr.microsoft.com/playwright:v1.53.0-jammy
 
 # 设置工作目录
 WORKDIR /app
@@ -11,8 +11,8 @@ COPY package*.json ./
 RUN npm config set registry https://registry.npmmirror.com
 
 # 生成package-lock.json（如果不存在）并安装依赖
-RUN npm install --only=production && npm cache clean --force && \
-    rm -rf /tmp/* /var/tmp/* && \
+RUN npm install --omit=dev && npm cache clean --force && \
+    rm -rf /tmp/* /var/tmp/* /root/.npm && \
     # 清理 apt 缓存
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
