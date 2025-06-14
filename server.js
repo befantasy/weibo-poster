@@ -102,7 +102,7 @@ async function initBrowser() {
         }
         
         // CHANGE: 检查上下文是否有效，不再检查全局页面
-        if (context && (!browser.isConnected() || (context.pages().length === 0 && !loginPage))) {
+        if (context && (!browser.isConnected() {
             logWithFlush('[浏览器] 检测到上下文可能无效，重新创建...');
             await context.close().catch(() => {});
             context = null;
