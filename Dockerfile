@@ -5,7 +5,7 @@ FROM mcr.microsoft.com/playwright:v1.53.0-jammy
 WORKDIR /app
 
 # 复制package.json和package-lock.json（如果存在）
-COPY package*.json ./
+COPY package.json ./
 
 # 设置npm镜像源（可选，用于加速安装）
 RUN npm config set registry https://registry.npmmirror.com
