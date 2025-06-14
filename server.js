@@ -178,7 +178,7 @@ async function checkLoginStatus() {
             await page.goto('https://weibo.com', { waitUntil: 'domcontentloaded', timeout: 20000 });
             
             try {
-                await page.waitForSelector('button[title="发微博"]', { timeout: 5000 });
+                await page.waitForSelector('button[title="发微博"]', { timeout: 10000 });
                 isLoggedIn = true;
                 logWithFlush('[登录检查] ✅ 用户已登录');
                 return true;
