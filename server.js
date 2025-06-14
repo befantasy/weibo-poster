@@ -26,6 +26,8 @@ function logErrorWithFlush(...args) {
     }
 }
 
+app.use(express.static(path.join(__dirname, 'public'))); // 添加这行
+
 // 中间件
 app.use(cors());
 app.use(express.json({
